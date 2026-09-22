@@ -1,0 +1,25 @@
+# OS/editor
+.DS_Store
+.idea/
+*.swp
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# Node
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+# Unreal generated output
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+*.sln
+*.xcworkspace/
+*.xcodeproj/
