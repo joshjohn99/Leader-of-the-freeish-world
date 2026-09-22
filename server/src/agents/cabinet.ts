@@ -1,0 +1,24 @@
+import type {World} from '../../../shared/schemas/oil-crisis.ts';
+import {campaignRules} from '../campaign/campaign.ts';
+import {electionRules} from '../election/election.ts';
+import {worldEventEngine} from '../events/world-news.ts';
+export const cabinetMembers=Object.freeze([
+ {id:'state',name:'Nora Vale',title:'Secretary of State',initials:'NV',focus:'Foreign policy and international relations',personality:'Dry diplomatic wit. Can turn a public insult into a carefully worded joint statement.',greeting:'President, I can translate your promises into diplomatic priorities. Translating Petrov into reasonable is billed separately.'},
+ {id:'treasury',name:'Felix Penn',title:'Secretary of the Treasury',initials:'FP',focus:'Federal finances, taxes, and currency',personality:'Deadpan accountant who insists every grand vision needs a price tag.',greeting:'President, bring me your promises. I brought a calculator and a small, professionally appropriate sense of dread.'},
+ {id:'defense',name:'Dana Ward',title:'Secretary of Defense',initials:'DW',focus:'National defense and military readiness',personality:'Calm and blunt. Distrusts theatrical threats and loves an actual contingency plan.',greeting:'President, we can review security risks. A strong posture is useful; shouting at the map is not a deployment.'},
+ {id:'commerce',name:'Leo Brooks',title:'Secretary of Commerce',initials:'LB',focus:'Economic growth, trade, and business development',personality:'Enthusiastic dealmaker, suspicious of Max’s claims, focused on practical infrastructure.',greeting:'President, let’s turn the jobs speech into a workable plan. Ideally one with jobs in it.'},
+ {id:'labor',name:'Rosa Grant',title:'Secretary of Labor',initials:'RG',focus:'Worker rights, wages, and employment conditions',personality:'Warm, sharp union negotiator. Asks who benefits and who gets stuck working overtime.',greeting:'President, I’ll help make your promises work for the people doing the work. Ribbon-cutting is not an employment category.'},
+ {id:'health',name:'Dr. Maya Reed',title:'Secretary of Health and Human Services',initials:'MR',focus:'Public health programs and social services',personality:'Compassionate physician with surgical comic timing. Insists on evidence and realistic capacity.',greeting:'President, let’s examine what your promises mean for families. My prescription pad does not cover miracles.'},
+]);
+export type CabinetMessage={role:'user'|'assistant';text:string};
+export interface CabinetVoice {line:string;replies:string[]}
+export function cabinetMember(id:string){const member=cabinetMembers.find(m=>m.id===id);if(!member)throw Error('Unknown cabinet member');return member;}
+export function validateCabinetMessages(value:unknown):CabinetMessage[]{
+ if(!Array.isArray(value)||value.length>20)throw Error('Invalid cabinet history');
+ return value.map(m=>{if(!m||!['user','assistant'].includes(m.role)||typeof m.text!=='string'||!m.text.trim()||m.text.length>(m.role==='user'?600:1800))throw Error('Invalid cabinet message');return {role:m.role,text:m.text.trim()};});
+}
+export function validateCabinetVoice(value:unknown):CabinetVoice{
+ const v=value as CabinetVoice;if(!v||typeof v.line!=='string'||!v.line.trim()||v.line.length>1800||!Array.isArray(v.replies)||v.replies.length<2||v.replies.length>4||v.replies.some(r=>typeof r!=='string'||!r.trim()||r.length>160)||new Set(v.replies).size!==v.replies.length)throw Error('Invalid cabinet response');return {line:v.line,replies:[...v.replies]};
+}
+export function cabinetContext(world:World,id:string,messages:CabinetMessage[]){return {rules:{baseOilDemand:6,shortageApprovalPenaltyPerUnit:3,dailyRevenue:3,studyCost:6,limits:'Petrovia is the only playable oil supplier. No domestic extraction, taxes, military deployments or alternative supplier mechanics exist yet. Discuss these as future proposals only. Do not invent numeric effects.'},member:cabinetMember(id),campaign:campaignRules.context(world),state:world.state,election:electionRules.snapshot(world),news:worldEventEngine.context(world),publicOutcomes:world.events.filter(e=>!e.diplomacy&&!e.sterling||e.diplomacy?.reply==='accept'||e.sterling?.reply==='fund').slice(-6).map(e=>e.messages),conversation:validateCabinetMessages(messages)};}
+export function offlineCabinet(world:World,id:string):CabinetVoice{const m=cabinetMember(id),promises=campaignRules.promises(world)?.promises??[];return {line:`${m.greeting}\n\n${promises.length?`Your campaign commitments are: ${promises.join('; ')}. We should clarify the intended outcome, check feasibility and cost, and then choose a next step in the press briefing.`:'Record your three campaign promises first so we can review them together.'}\n\nThis is an offline briefing. Connect Claude for a response to your specific question. Advice here does not enact policy.`,replies:['Which promise needs attention first?','What are the costs and risks?','Give me a realistic next step.']};}

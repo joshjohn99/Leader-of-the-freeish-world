@@ -3,5 +3,23 @@
   "version": "0.0.0",
   "private": true,
   "description": "Political satire game \u2014 project foundation",
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=22.15.0"
+  },
+  "scripts": {
+    "play": "node --experimental-strip-types server/src/cli/play.ts",
+    "simulate": "node --experimental-strip-types server/src/cli/play.ts --demo",
+    "test": "node --experimental-strip-types --test server/tests/*.test.ts",
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "three": "0.186.0"
+  },
+  "devDependencies": {
+    "vite": "6.4.3"
+  }
 }

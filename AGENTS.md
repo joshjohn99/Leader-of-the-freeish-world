@@ -15,3 +15,10 @@ Project: Leader of the Free-ish World.
 - Configure Git LFS before adding Unreal binary assets.
 - Document prototype balance assumptions; do not present them as real economic forecasts.
 - Keep a runnable, tested vertical slice at each implementation milestone.
+
+## Current user direction
+
+- Build and review small pieces; do not implement the full roadmap in one pass.
+- Prioritize funny decisions and character reactions, then physical presence, then multiplayer.
+- The player country is Freedoma. Use Department of Energy, not an energy minister.
+- The browser office is an explicitly requested single-player presentation prototype. Keep it separate from the eventual Unreal client and production server authority.

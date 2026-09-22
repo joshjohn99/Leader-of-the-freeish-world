@@ -12,7 +12,7 @@ Read a developing situation, choose a policy or negotiate, observe consequences 
 
 ## First prototype
 
-Three fictional nations: Freedomia, Petrovia, and Technovia (working names). Start with text output and explicit turns. Add one billionaire after the country rules work. Later connect a small presidential office, character, and phone in Unreal.
+Three fictional nations: Freedoma, Petrovia, and Technovia (working names). Start with text output and explicit turns. Add one billionaire after the country rules work. Later connect a small presidential office, character, and phone in Unreal.
 
 ## Direction still to test
 
