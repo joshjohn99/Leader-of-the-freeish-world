@@ -9,3 +9,7 @@ test('offline negotiation shows its failure reason and a local retry',()=>{
  const html=conversationMarkup(createWorld(),undefined,'offline',false,'Claude is rate limiting requests.');
  assert.match(html,/Claude is rate limiting requests/);assert.match(html,/id="petrov-retry"/);
 });
+test('Petrov conversation exposes editable sale terms',()=>{
+ const html=conversationMarkup(createWorld(),undefined,'offline',false);
+ assert.match(html,/id="petrov-terms"/);assert.match(html,/id="petrov-quantity"/);assert.match(html,/id="petrov-price"/);assert.match(html,/Send terms to Petrov/);
+});

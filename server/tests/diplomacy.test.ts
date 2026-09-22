@@ -18,6 +18,20 @@ test('counteroffer changes price and available replies, then settles and replays
  assert.deepEqual(replay(settled.events),settled);
  assert.equal(start.events.length,0);
 });
+test('custom quantity and price counteroffer become the next negotiation terms',()=>{
+ const start=createWorld(),offer=petrovTurn(start);
+ const counter=replyToPetrov(start,'counter',offer.id,'default',undefined,'I can meet those terms.',true,true,true,5,1);
+ assert.equal(counter.state.day,start.state.day);
+ assert.equal(counter.events[0].diplomacy?.requestedQuantity,5);
+ assert.equal(counter.events[0].diplomacy?.requestedUnitPrice,1);
+ const next=petrovTurn(counter);
+ assert.equal(next.quantity,5); assert.ok(next.unitPrice<=1);
+ const settled=replyToPetrov(counter,'accept',next.id,next.strategy);
+ assert.equal(settled.state.oil,start.state.oil+5-6);
+ assert.deepEqual(replay(settled.events),settled);
+ assert.throws(()=>replyToPetrov(start,'counter',offer.id,'default',undefined,undefined,true,true,true,offer.quantity+1,1),/quantity/);
+ assert.throws(()=>replyToPetrov(start,'counter',offer.id,'default',undefined,undefined,true,true,true,5,7),/price/);
+});
 test('pressure offers change replies; rejected and stale choices never mutate state',()=>{
  const start=createWorld(), old=petrovTurn(start), threatened=decide(start,'threaten');
  const offer=petrovTurn(threatened), before=JSON.stringify(threatened);

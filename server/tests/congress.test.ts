@@ -29,13 +29,13 @@ test('amendments reopen previously passed chamber approvals',()=>{
  world=decide(world,'wait');world=actInCongress(world,0,'senate','oversight');assert.deepEqual(congressRules.bill(world,0).passed,[]);assert.deepEqual(replay(world.events),world);
 });
 test('Congress rejects repeated daily actions, invalid drafts and unfunded concessions',()=>{
- let world=start();assert.throws(()=>actInCongress(world,0,'house','draft','tiny'));assert.throws(()=>actInCongress(world,7,'house','draft','A reasonable proposal'));assert.throws(()=>actInCongress(world,0,'house','vote'));
+ let world=start();assert.throws(()=>actInCongress(world,0,'house','draft','tiny'));assert.throws(()=>actInCongress(world,7,'house','draft','A reasonable proposal'));assert.equal(actInCongress(world,0,'house','vote').events.at(-1)?.congress?.kind,'action');
  world=actInCongress(world,0,'house','draft','A practical and measurable regional pilot.');assert.throws(()=>actInCongress(world,1,'senate','draft','Another practical regional pilot'),/Today/);
  world=decide(world,'wait');assert.throws(()=>actInCongress({...world,state:{...world.state,treasury:0}},0,'house','costing'),/treasury/);assert.throws(()=>actInCongress({...world,state:{...world.state,day:31}},0,'house','vote'),/ended/);
  const before=JSON.stringify(world);assert.throws(()=>actInCongress(world,0,'house','benefits','Invented extra text'));assert.equal(JSON.stringify(world),before);
 });
-test('congressional actions do not complete the public briefing or count as domestic policy',()=>{
- let world=beginDay(start());world=actInCongress(world,0,'house','draft','A practical program with public review.');assert.equal(agendaEngine.tasks(world).find(t=>t.id==='public')?.done,false);world=decide(world,'ration');assert.equal(world.state.day,1);assert.deepEqual(replay(world.events),world);
+test('congressional actions complete the public agenda without counting as domestic policy',()=>{
+ let world=beginDay(start());world=actInCongress(world,0,'house','draft','A practical program with public review.');assert.equal(agendaEngine.tasks(world).find(t=>t.id==='public')?.done,true);world=decide(world,'ration');assert.equal(world.state.day,1);assert.deepEqual(replay(world.events),world);
 });
 test('AI debate has three distinct voices and only legal response tactics',async()=>{
  const world=start(),voice={voices:['banner','workbench','free'].map(id=>({id,line:'President, we want practical details before a vote.'})),replies:[{id:'draft',title:'Put our practical proposal on the table'}]};
@@ -46,4 +46,14 @@ test('AI debate has three distinct voices and only legal response tactics',async
 test('forged congressional vote outcomes fail replay validation',()=>{
  let world=start();world=actInCongress(world,0,'house','draft','A practical publicly reviewed proposal.');world=decide(world,'wait');world=actInCongress(world,0,'house','vote');
  const events=JSON.parse(JSON.stringify(world.events));events.at(-1).congress.passed=!events.at(-1).congress.passed;assert.throws(()=>replay(events),/does not match/);
+});
+
+test('promises can be negotiated and voted on directly without a draft',()=>{
+ let world=start();for(const action of ['costing','benefits','oversight'] as const){world=actInCongress(world,0,'house',action);world=decide(world,'wait');}
+ world=actInCongress(world,0,'house','vote');world=decide(world,'wait');world=actInCongress(world,0,'senate','vote');assert.equal(congressRules.bill(world,0).proposal,undefined);assert.equal(congressRules.bill(world,0).authorized,true);assert.deepEqual(replay(world.events),world);
+});
+test('failed vote explains exact shortfall and stays tied to the recorded ballot after amendments',()=>{
+ let world=start(),seed=0;while(congressRules.tally(world,0,'house').canPass)world=start(++seed);
+ world=actInCongress(world,0,'house','vote');const report=congressRules.voteReport(world,0,'house')!;assert.equal(report.passed,false);assert.equal(report.shortfall,report.needed-report.yes);assert.equal(report.voices.reduce((n,v)=>n+v.no,0),report.seats-report.yes);assert.ok(report.voices.every(v=>v.reason.length>5));
+ world=decide(world,'wait');world=actInCongress(world,0,'house','costing');const after=congressRules.voteReport(world,0,'house')!;assert.equal(after.yes,report.yes);assert.equal(after.changedSinceVote,true);assert.deepEqual(replay(world.events),world);
 });

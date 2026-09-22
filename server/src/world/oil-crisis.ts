@@ -3,6 +3,7 @@ import type {Chamber,CongressAction} from '../congress/congress.ts';
 import {activeDay,agendaEngine} from '../agenda/agenda.ts';
 import {electionRules} from '../election/election.ts';
 import {worldEventEngine,newsOptions} from '../events/world-news.ts';
+import {localNewsEngine} from '../events/local-news.ts';
 import type {NewsResponse} from '../events/world-news.ts';
 import {campaignRules} from '../campaign/campaign.ts';
 import type {CampaignRecord,PromiseAction} from '../campaign/campaign.ts';
@@ -10,6 +11,8 @@ import { maxTurn, maxReplies, pilotDaysLeft } from '../billionaires/sterling.ts'
 import type { MaxRecord } from '../billionaires/sterling.ts';
 import { petrovTurn, petrovReplies } from '../diplomacy/petrov.ts';
 import type { DiplomacyRecord } from '../diplomacy/petrov.ts';
+import { vossTurn, vossReplies } from '../diplomacy/voss.ts';
+import type { VossRecord } from '../diplomacy/voss.ts';
 import type { CrisisState, Decision, World, WorldEvent } from '../../../shared/schemas/oil-crisis.ts';
 
 export const decisions = Object.freeze({
@@ -38,15 +41,15 @@ export function endDay(world:World):World {
  const day=activeDay(world);if(!day)throw Error('No daily agenda is open.');
  if(agendaEngine.tasks(world).some(task=>!task.done))throw Error('Complete today’s agenda before ending the day.');
  const s={...world.state},messages:string[]=[];
- const policy=day.events.find(e=>e.timing==='day-action'&&!e.diplomacy&&!e.sterling&&!e.campaign&&!e.newsResponse&&!e.announcement&&!e.congress);
+ const policy=day.events.find(e=>e.timing==='day-action'&&!e.diplomacy&&!e.sterling&&!e.security&&!e.campaign&&!e.newsResponse&&!e.announcement&&!e.congress);
  let demand=policy?.decision==='ration'?3:policy?.decision==='subsidize'?8:6;
  if(pilotDaysLeft(world)>0){demand=Math.max(0,demand-2);messages.push('Volt buses reduce today’s oil demand by 2.');}
  if(policy?.decision!=='subsidize')s.subsidyDays=0;
  const used=Math.min(s.oil,demand),shortage=demand-used;s.oil-=used;
  s.approval=clamp(s.approval+(shortage?-shortage*3:1),0,100);s.treasury+=3;s.supplierOil+=4;s.day++;
  messages.push(`Citizens consume ${used} oil against demand of ${demand}.`,shortage?`Shortage: ${shortage} oil. Approval -${shortage*3}.`:'Demand met. Approval +1.','Treasury receives 3 daily revenue. Petrovia produces 4 oil.');
- const news=worldEventEngine.next(world);if(news)messages.push(`PNN: ${news.headline}`);
- const event:WorldEvent=Object.freeze({agenda:Object.freeze({kind:'end' as const}),...(news?{news}:{}),id:world.events.length+1,decision:'wait',messages:Object.freeze(messages),after:Object.freeze(s)});
+ const news=worldEventEngine.next(world);const localNews=localNewsEngine.next(world);if(news)messages.push(`PNN: ${news.headline}`);if(localNews)messages.push(`BULL: ${localNews.headline}`);
+ const event:WorldEvent=Object.freeze({agenda:Object.freeze({kind:'end' as const}),...(news?{news}:{}),...(localNews?{localNews}:{}),id:world.events.length+1,decision:'wait',messages:Object.freeze(messages),after:Object.freeze(s)});
  return freezeWorld(s,[...world.events,event]);
 }
 export function seatCongress(world:World,seed:unknown):World {
@@ -88,7 +91,7 @@ export function decidePromise(world:World,index:number,action:unknown,line?:stri
 export function decide(world: World, input: unknown,withNews=true,enforceTerm=true): World {
   return advance(world, input,undefined,undefined,undefined,withNews,undefined,enforceTerm);
 }
-export function replyToPetrov(world: World, input: unknown, offerId: unknown, strategy: unknown = 'default', spokenLine?: string, chosenLine?: string,withNews=true,enforceTerm=true,conversationOnly=['counter','ask_needs','decline'].includes(String(input))): World {
+export function replyToPetrov(world: World, input: unknown, offerId: unknown, strategy: unknown = 'default', spokenLine?: string, chosenLine?: string,withNews=true,enforceTerm=true,conversationOnly=['counter','ask_needs','decline'].includes(String(input)), requestedQuantity?: number, requestedUnitPrice?: number): World {
   if(chosenLine!==undefined&&(typeof chosenLine!=='string'||chosenLine.length<5||chosenLine.length>400))throw new Error('Invalid player dialogue.');
   const offer = petrovTurn(world, strategy);
   if (spokenLine !== undefined && (typeof spokenLine !== 'string' || spokenLine.length > 900)) throw new Error('Invalid dialogue.');
@@ -96,7 +99,11 @@ export function replyToPetrov(world: World, input: unknown, offerId: unknown, st
   const reply = petrovReplies(world, offer).find(reply=>reply.id===input);
   if (!reply) throw new Error('That reply is not available for this offer.');
   if (reply.blocked) throw new Error(reply.blocked);
-  const diplomacy = Object.freeze({ offer, reply: reply.id, playerLine: chosenLine??reply.line, ...(chosenLine?{chosenLine}:{}), ...(spokenLine ? { spokenLine } : {}) });
+  if (reply.id === 'counter' && (requestedQuantity !== undefined || requestedUnitPrice !== undefined)) {
+    if (!Number.isInteger(requestedQuantity) || requestedQuantity! < 1 || requestedQuantity! > Math.min(offer.quantity, world.state.supplierOil - 12)) throw new Error('Choose a quantity Petrov can release while protecting Petrovia’s reserve.');
+    if (!Number.isInteger(requestedUnitPrice) || requestedUnitPrice! < 1 || requestedUnitPrice! > 6) throw new Error('Choose a unit price between 1 and 6.');
+  }
+  const diplomacy = Object.freeze({ offer, reply: reply.id, playerLine: chosenLine??reply.line, ...(chosenLine?{chosenLine}:{}), ...(spokenLine ? { spokenLine } : {}), ...(requestedQuantity!==undefined?{requestedQuantity}:{}), ...(requestedUnitPrice!==undefined?{requestedUnitPrice}: {}) });
   return advance(world, reply.decision, diplomacy,undefined,undefined,withNews,undefined,enforceTerm,conversationOnly);
 }
 export function replyToMax(world:World,input:unknown,offerId:unknown,strategy:unknown,spokenLine?:string,playerLine?:string,withNews=true,enforceTerm=true,conversationOnly=['praise','guarantees','decline'].includes(String(input))):World {
@@ -108,6 +115,15 @@ export function replyToMax(world:World,input:unknown,offerId:unknown,strategy:un
  const sterling=Object.freeze({offer,reply:reply.id,playerLine:playerLine??reply.line,...(spokenLine?{spokenLine}:{})});
  return advance(world,'wait',undefined,sterling,undefined,withNews,undefined,enforceTerm,conversationOnly);
 }
+export function replyToVoss(world:World,input:unknown,offerId:unknown,strategy:unknown='urgent',spokenLine?:string,playerLine?:string,withNews=true,enforceTerm=true,conversationOnly=['ask_evidence','decline_call'].includes(String(input))):World {
+ const offer=vossTurn(world,strategy),reply=vossReplies(world,offer).find(r=>r.id===input);
+ if(offer.id!==offerId||!reply)throw Error('This Karmenia request is no longer available.');
+ if(reply.blocked)throw Error(reply.blocked);
+ if(spokenLine!==undefined&&(typeof spokenLine!=='string'||spokenLine.length>900))throw Error('Invalid Volkov dialogue');
+ if(playerLine!==undefined&&(typeof playerLine!=='string'||playerLine.length<5||playerLine.length>500))throw Error('Invalid player dialogue');
+ const security=Object.freeze({offer,reply:reply.id,playerLine:playerLine??reply.line,...(spokenLine?{spokenLine}:{})});
+ return advance(world,'wait',undefined,undefined,undefined,withNews,undefined,enforceTerm,conversationOnly,undefined,security);
+}
 export function respondToNews(world:World,newsId:string,action:unknown,withNews=true,enforceTerm=true):World {
  const option=newsOptions(world,newsId).find(o=>o.id===action);if(!option||option.blocked)throw Error(option?.blocked??'This bulletin already has a response.');
  return advance(world,'wait',undefined,undefined,undefined,withNews,Object.freeze({newsId,action:option.id}),enforceTerm);
@@ -116,7 +132,7 @@ export function publishAnnouncement(world:World,text:unknown,withNews=true,enfor
  if(typeof text!=='string'||text.trim().length<10||text.trim().length>800)throw Error('Write an announcement between 10 and 800 characters.');
  return advance(world,'wait',undefined,undefined,undefined,withNews,undefined,enforceTerm,false,Object.freeze({text:text.trim()}));
 }
-function advance(world: World, input: unknown, diplomacy?: DiplomacyRecord, sterling?:MaxRecord,campaign?:CampaignRecord,withNews=true,newsResponse?:NewsResponse,enforceTerm=true,conversationOnly=false,announcement?:{readonly text:string}): World {
+function advance(world: World, input: unknown, diplomacy?: DiplomacyRecord, sterling?:MaxRecord,campaign?:CampaignRecord,withNews=true,newsResponse?:NewsResponse,enforceTerm=true,conversationOnly=false,announcement?:{readonly text:string},security?:VossRecord): World {
   if(enforceTerm&&electionRules.finished(world))throw Error("The election has concluded. Start a new presidency to play again.");
   const day=activeDay(world);
   if(day){
@@ -124,6 +140,7 @@ function advance(world: World, input: unknown, diplomacy?: DiplomacyRecord, ster
     if(diplomacy&&day.events.some(e=>e.diplomacy&&!['counter','ask_needs','challenge'].includes(e.diplomacy.reply)))throw Error('Your diplomatic position is settled for today.');
     if(sterling&&day.events.some(e=>e.sterling&&['fund','decline','humiliate'].includes(e.sterling.reply)))throw Error('Your Max meeting is settled for today.');
     if(announcement&&committed.some(e=>e.announcement))throw Error('An announcement has already been published today.');
+    if(security&&day.events.some(e=>e.security&&!['ask_evidence','decline_call'].includes(e.security.reply)))throw Error('Your Karmenia position is settled for today.');
     if(campaign?.kind==='decision'&&committed.some(e=>e.campaign?.kind==='decision'&&e.campaign.index===campaign.index))throw Error('This promise has already been addressed today.');
     if(!diplomacy&&!sterling&&!campaign&&!announcement&&!newsResponse&&committed.some(e=>!e.diplomacy&&!e.sterling&&!e.campaign&&!e.announcement&&!e.newsResponse&&!e.congress))throw Error('Today’s domestic policy is already set.');
   }
@@ -131,8 +148,8 @@ function advance(world: World, input: unknown, diplomacy?: DiplomacyRecord, ster
   if (!option) throw new Error('Unknown decision.');
   if (option.blocked && !(diplomacy?.reply === 'accept')) throw new Error(option.blocked);
   if(conversationOnly){
-    if(!(diplomacy&&['counter','ask_needs','decline'].includes(diplomacy.reply))&&!(sterling&&['praise','guarantees','decline'].includes(sterling.reply)))throw Error('This action requires a day.');
-    const event:WorldEvent=Object.freeze({timing:'conversation',...(diplomacy?{diplomacy}:{}),...(sterling?{sterling}:{}),id:world.events.length+1,decision:option.decision,messages:Object.freeze(['Conversation recorded. No day or resources spent.']),after:world.state});
+    if(!(diplomacy&&['counter','ask_needs','decline'].includes(diplomacy.reply))&&!(sterling&&['praise','guarantees','decline'].includes(sterling.reply))&&!(security&&['ask_evidence','decline_call'].includes(security.reply)))throw Error('This action requires a day.');
+    const event:WorldEvent=Object.freeze({timing:'conversation',...(diplomacy?{diplomacy}:{}),...(sterling?{sterling}:{}),...(security?{security}:{}),id:world.events.length+1,decision:option.decision,messages:Object.freeze(['Conversation recorded. No day or resources spent.']),after:world.state});
     return freezeWorld({...world.state},[...world.events,event]);
   }
   const decision = option.decision;
@@ -187,9 +204,15 @@ function advance(world: World, input: unknown, diplomacy?: DiplomacyRecord, ster
     if(campaign.action==='double_down'){const repeated=world.events.some(e=>e.campaign?.kind==='decision'&&e.campaign.index===campaign.index&&e.campaign.action==='double_down');s.approval+=repeated?-2:1;messages.push(repeated?'Repeated rhetoric without delivery costs 2 approval.':'The renewed promise wins 1 approval. It remains undelivered.');}
   }
   if(newsResponse){const option=newsOptions(world,newsResponse.newsId).find(o=>o.id===newsResponse.action)!;s.treasury-=option.cost;s.approval+=newsResponse.action==='relief'?2:newsResponse.action==='mediate'?1:0;messages.push(`PNN bulletin response: ${option.title}. ${option.hint}`);}
+  if(security){
+    if(security.reply==='humanitarian_corridor'){s.treasury-=4;s.approval+=2;messages.push('Freedoma funds a monitored humanitarian corridor for the Lydian Strip. Volkov wanted a strike; the cabinet chooses protection and oversight.');}
+    if(security.reply==='international_monitor'){s.treasury-=2;s.approval+=1;messages.push('Freedoma calls for international monitors and published evidence before escalation.');}
+    if(security.reply==='limited_defense'){s.treasury-=8;s.approval-=4;messages.push('Freedoma offers limited defensive support under public oversight. No attack or battlefield operation is simulated.');}
+    if(security.reply==='reject_attack'){s.approval+=2;messages.push('Freedoma rejects the attack request and demands civilian protection. Volkov calls the decision cowardice on live television.');}
+  }
   if(day){
     s.approval=clamp(s.approval,0,100);
-    const event:WorldEvent=Object.freeze({timing:'day-action',...(announcement?{announcement}:{}),...(newsResponse?{newsResponse}:{}),...(campaign?{campaign}:{}),...(sterling?{sterling}:{}),...(diplomacy?{diplomacy}:{}),id:world.events.length+1,decision,messages:Object.freeze([...messages,'Decision recorded. Daily consumption and revenue wait until End day.']),after:Object.freeze(s)});
+    const event:WorldEvent=Object.freeze({timing:'day-action',...(announcement?{announcement}:{}),...(newsResponse?{newsResponse}:{}),...(campaign?{campaign}:{}),...(sterling?{sterling}:{}),...(diplomacy?{diplomacy}:{}),...(security?{security}:{}),id:world.events.length+1,decision,messages:Object.freeze([...messages,'Decision recorded. Daily consumption and revenue wait until End day.']),after:Object.freeze(s)});
     return freezeWorld(s,[...world.events,event]);
   }
   const news=withNews?worldEventEngine.next(world):undefined;
@@ -210,14 +233,14 @@ function advance(world: World, input: unknown, diplomacy?: DiplomacyRecord, ster
   s.treasury += 3;
   s.approval = clamp(s.approval, 0, 100);
   s.day += 1;
-  const event: WorldEvent = Object.freeze({ ...(announcement?{announcement}:{}), ...(news?{news}:{}), ...(newsResponse?{newsResponse}:{}), ...(campaign?{campaign}:{}), ...(sterling?{sterling}:{}), ...(diplomacy ? { diplomacy } : {}), id: world.events.length + 1, decision,
+  const event: WorldEvent = Object.freeze({ ...(announcement?{announcement}:{}), ...(news?{news}:{}), ...(newsResponse?{newsResponse}:{}), ...(campaign?{campaign}:{}), ...(sterling?{sterling}:{}), ...(diplomacy ? { diplomacy } : {}), ...(security?{security}:{}), id: world.events.length + 1, decision,
     messages: Object.freeze(messages), after: Object.freeze({ ...s }) });
   return freezeWorld(s, [...world.events, event]);
 }
 export function replay(events: readonly WorldEvent[]): World {
   let world = createWorld();
   for (const event of events) {
-    world = event.congress?(event.congress.kind==='founding'?seatCongress(world,event.congress.seed):actInCongress(world,event.congress.index,event.congress.chamber,event.congress.action,event.congress.text)):event.agenda?(event.agenda.kind==='start'?beginDay(world):endDay(world)):event.announcement?publishAnnouncement(world,event.announcement.text,!!event.news,false):event.newsResponse?respondToNews(world,event.newsResponse.newsId,event.newsResponse.action,!!event.news,false):event.campaign?(event.campaign.kind==='launch'?startPresidency(world,event.campaign.promises):decidePromise(world,event.campaign.index,event.campaign.action,event.campaign.line,!!event.news,false)):event.sterling?replyToMax(world,event.sterling.reply,event.sterling.offer.id,event.sterling.offer.strategy,event.sterling.spokenLine,event.sterling.playerLine,!!event.news,false,event.timing==='conversation'):event.diplomacy ? replyToPetrov(world, event.diplomacy.reply, event.diplomacy.offer.id, event.diplomacy.offer.strategy, event.diplomacy.spokenLine, event.diplomacy.chosenLine,!!event.news,false,event.timing==='conversation') : decide(world, event.decision,!!event.news,false);
+    world = event.congress?(event.congress.kind==='founding'?seatCongress(world,event.congress.seed):actInCongress(world,event.congress.index,event.congress.chamber,event.congress.action,event.congress.text)):event.agenda?(event.agenda.kind==='start'?beginDay(world):endDay(world)):event.announcement?publishAnnouncement(world,event.announcement.text,!!event.news,false):event.newsResponse?respondToNews(world,event.newsResponse.newsId,event.newsResponse.action,!!event.news,false):event.campaign?(event.campaign.kind==='launch'?startPresidency(world,event.campaign.promises):decidePromise(world,event.campaign.index,event.campaign.action,event.campaign.line,!!event.news,false)):event.sterling?replyToMax(world,event.sterling.reply,event.sterling.offer.id,event.sterling.offer.strategy,event.sterling.spokenLine,event.sterling.playerLine,!!event.news,false,event.timing==='conversation'):event.security?replyToVoss(world,event.security.reply,event.security.offer.id,event.security.offer.strategy,event.security.spokenLine,event.security.playerLine,!!event.news,false,event.timing==='conversation'):event.diplomacy ? replyToPetrov(world, event.diplomacy.reply, event.diplomacy.offer.id, event.diplomacy.offer.strategy, event.diplomacy.spokenLine, event.diplomacy.chosenLine,!!event.news,false,event.timing==='conversation',event.diplomacy.requestedQuantity,event.diplomacy.requestedUnitPrice) : decide(world, event.decision,!!event.news,false);
     if (JSON.stringify(world.events.at(-1)) !== JSON.stringify(event)) throw new Error('Event does not match the simulation rules.');
   }
   return world;

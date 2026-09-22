@@ -2,7 +2,7 @@
   "name": "leader-of-the-freeish-world",
   "version": "0.0.0",
   "private": true,
-  "description": "Political satire game \u2014 project foundation",
+  "description": "Political satire game — project foundation",
   "license": "UNLICENSED",
   "type": "module",
   "engines": {
@@ -17,6 +17,7 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
+    "mapbox-gl": "^3.15.0",
     "three": "0.186.0"
   },
   "devDependencies": {

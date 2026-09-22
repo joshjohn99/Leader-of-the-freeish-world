@@ -1,4 +1,5 @@
 import type { DiplomacyRecord } from '../../server/src/diplomacy/petrov.ts';
+import type { VossRecord } from '../../server/src/diplomacy/voss.ts';
 export type Decision = 'buy' | 'subsidize' | 'ration' | 'threaten' | 'wait';
 export interface CrisisState {
   day: number;
@@ -17,10 +18,12 @@ export interface WorldEvent {
   readonly timing?: 'conversation'|'day-action';
   readonly agenda?: import('../../server/src/agenda/agenda.ts').AgendaRecord;
   readonly news?: import('../../server/src/events/world-news.ts').NewsBulletin;
+  readonly localNews?: import('../../server/src/events/local-news.ts').LocalBulletin;
   readonly newsResponse?: import('../../server/src/events/world-news.ts').NewsResponse;
   readonly campaign?: import('../../server/src/campaign/campaign.ts').CampaignRecord;
   readonly sterling?: import('../../server/src/billionaires/sterling.ts').MaxRecord;
   readonly diplomacy?: DiplomacyRecord;
+  readonly security?: VossRecord;
   readonly id: number;
   readonly decision: Decision;
   readonly messages: readonly string[];

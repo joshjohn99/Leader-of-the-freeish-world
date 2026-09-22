@@ -1,0 +1,16 @@
+import { vossTurn, vossReplies } from '../diplomacy/voss.ts';
+import type { World } from '../../../shared/schemas/oil-crisis.ts';
+import { ClaudeRequestError } from './claude.ts';
+export interface VossVoice { strategy:'urgent'|'reassuring'|'pressuring'; line:string; replies:{id:string;title:string;line:string}[] }
+export function validateVossVoice(value:unknown,world:World):VossVoice {
+ const v=value as VossVoice; if(!v||!['urgent','reassuring','pressuring'].includes(v.strategy)||typeof v.line!=='string'||v.line.length<5||v.line.length>900)throw Error('Invalid Voss response');
+ const legal=vossReplies(world,vossTurn(world,v.strategy)); if(!Array.isArray(v.replies)||v.replies.length<3||v.replies.length>6)throw Error('Invalid Voss choices');
+ const seen=new Set<string>(); for(const r of v.replies){if(!legal.some(o=>o.id===r.id)||seen.has(r.id)||typeof r.title!=='string'||r.title.length<3||r.title.length>120||typeof r.line!=='string'||r.line.length<5||r.line.length>450)throw Error('Invalid Voss choice');seen.add(r.id);}
+ for(const id of ['reject_attack','decline_call'])if(!seen.has(id))throw Error('Missing Voss choice'); return {strategy:v.strategy,line:v.line,replies:v.replies};
+}
+export async function generateVoss(world:World,key:string,model:string,fetcher:typeof fetch=fetch,workspaceId=''):Promise<VossVoice>{
+ const offer=vossTurn(world); const legal=vossReplies(world,offer);
+ const response=await fetcher('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01',...(workspaceId?{'anthropic-workspace-id':workspaceId}:{})},signal:AbortSignal.timeout(45000),body:JSON.stringify({model,max_tokens:1800,system:'You are Artem Volkov, prime minister of Karmenia in a political satire game. The Lydian Strip is a disputed neighboring territory in this fictional world. Never mention real people, countries, religions, or real conflicts. Stay at high-level politics: do not provide military tactics, targeting, weapons, casualty estimates, or operational instructions. Respond to the latest player position, then choose three to six legal replies. Keep the pressure dramatic but acknowledge civilian protection and uncertainty. Output JSON only.',messages:[{role:'user',content:JSON.stringify({offer,history:world.events.filter(e=>e.security).slice(-8).map(e=>e.security),state:world.state,legalReplies:legal.map(r=>({id:r.id,effect:r.hint}))})}],output_config:{format:{type:'json_schema',schema:{type:'object',additionalProperties:false,properties:{strategy:{type:'string',enum:['urgent','reassuring','pressuring']},line:{type:'string'},replies:{type:'array',items:{type:'object',additionalProperties:false,properties:{id:{type:'string',enum:legal.map(r=>r.id)},title:{type:'string'},line:{type:'string'}},required:['id','title','line']}}},required:['strategy','line','replies']}}}})});
+ if(!response.ok){const error=await response.json().catch(()=>({}));throw new ClaudeRequestError(typeof error?.error?.message==='string'?error.error.message:'Claude could not complete the Karmenia turn.');}
+ const data=await response.json(); const text=(data.content??[]).filter((item:any)=>item.type==='text').map((item:any)=>item.text).join(''); return validateVossVoice(JSON.parse(text),world);
+}

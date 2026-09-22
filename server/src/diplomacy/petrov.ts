@@ -18,6 +18,8 @@ export interface DiplomacyRecord {
   readonly playerLine: string;
   readonly spokenLine?: string;
   readonly chosenLine?: string;
+  readonly requestedQuantity?: number;
+  readonly requestedUnitPrice?: number;
 }
 export interface ReplyOption {
   id: ReplyId;
@@ -53,23 +55,23 @@ function baseTurn(world: World): PetrovOffer {
   if (move === 'scarcity') {
     unitPrice = Math.min(6, s.price + 1); mood = 'Protecting his own supply';
     motive = 'Petrov will not sell the final 12 oil reserved for his own country.';
-    line = quantity ? `My own people have discovered cars. Inconvenient timing. I can release ${quantity} oil at ${unitPrice} each. The rest stays here. Even I have a domestic audience.` : 'My domestic reserve is not for sale. My citizens also enjoy moving. Wait for production or make a diplomatic gesture; a threatening speech will not manufacture oil.';
+    line = quantity ? `My own people have discovered cars. Inconvenient timing. I can release ${quantity} barrels at F$${unitPrice} per barrel. The rest stays here. Even I have a domestic audience.` : 'My domestic reserve is not for sale. My citizens also enjoy moving. Wait for production or make a diplomatic gesture; a threatening speech will not manufacture oil.';
   } else if (move === 'counteroffer') {
     const previous = latestTalk!.offer;
-    quantity = Math.min(previous.quantity, available);
+    quantity = Math.min(latestTalk!.requestedQuantity ?? previous.quantity, available);
     const flexible = s.supplierTreasury < 50 && s.relations > -15;
-    unitPrice = flexible ? Math.max(1, previous.unitPrice - 1) : previous.unitPrice;
+    unitPrice = flexible ? Math.max(1, (latestTalk!.requestedUnitPrice ?? previous.unitPrice) - 1) : (latestTalk!.requestedUnitPrice ?? previous.unitPrice);
     mood = flexible ? 'Making a concession' : 'Holding his price';
     motive = flexible ? 'Export revenue matters more than one point of margin today.' : 'His cash position or damaged relations lets him refuse your discount.';
-    line = flexible ? `You asked for a discount. I can do ${quantity} oil at ${unitPrice} each. In public, this is my generous initiative. In private, please pay before my finance department notices.` : `I heard your counteroffer. Then I heard my finance department laughing. ${quantity} oil at ${unitPrice} each. That is my final price for this round.`;
+    line = flexible ? `You asked for a discount. I can do ${quantity} barrels at F$${unitPrice} per barrel. In public, this is my generous initiative. In private, please pay before my finance department notices.` : `I heard your counteroffer. Then I heard my finance department laughing. ${quantity} barrels at F$${unitPrice} per barrel. That is my final price for this round.`;
   } else if (move === 'pressure') {
     unitPrice = Math.min(6, Math.max(3, s.price + recentThreats)); mood = 'Pride before discounts';
     motive = 'Threats make conceding publicly costly. Repeated threats increase his premium.';
-    line = `I remember ${recentThreats > 1 ? 'the repeated threats' : 'that threat'}. Very cinematic. My offer is ${quantity} oil at ${unitPrice} each. You can pay the pride premium or give me a reason to stop charging it.`;
+    line = `I remember ${recentThreats > 1 ? 'the repeated threats' : 'that threat'}. Very cinematic. My offer is ${quantity} barrels at F$${unitPrice} per barrel. You can pay the pride premium or give me a reason to stop charging it.`;
   } else if (move === 'partnership') {
     unitPrice = Math.max(1, s.price - 1); mood = 'Cautiously cooperative';
     motive = 'A respectful, repeat customer is more valuable than a one-day diplomatic victory.';
-    line = `${lastReply === 'apologize' ? 'Your apology has been accepted. My press office is having it framed.' : lastReply === 'reassure' ? 'You offered a calmer relationship. An unusually inexpensive concession.' : 'We have managed several conversations without an international incident.'} ${quantity} oil at ${unitPrice} each. Let us call it friendship until the next invoice.`;
+    line = `${lastReply === 'apologize' ? 'Your apology has been accepted. My press office is having it framed.' : lastReply === 'reassure' ? 'You offered a calmer relationship. An unusually inexpensive concession.' : 'We have managed several conversations without an international incident.'} ${quantity} barrels at F$${unitPrice} per barrel. Let us call it friendship until the next invoice.`;
   } else {
     const opener = lastReply === 'ask_needs' ? 'You asked what I need. Export income, a domestic fuel reserve, and a photograph in which I look taller. The first two are negotiable subjects.' : lastReply === 'accept' ? 'The last payment arrived. Our relationship has never sounded more sincere.'
       : lastReply === 'decline' ? 'You walked away. I respect the drama. The oil is still here.'
@@ -78,7 +80,7 @@ function baseTurn(world: World): PetrovOffer {
       : last?.decision === 'wait' ? 'I enjoyed your podcast. Unlike a podcast, this offer contains oil.'
       : s.oil < 6 ? 'Your fuel reserve looks nervous. Mine has hired a publicist.'
       : 'President. I have oil. You have a campaign promise. Let us help each other with these unfortunate conditions.';
-    line = `${opener} ${quantity} oil, ${unitPrice} per unit. ${s.supplierTreasury < 45 ? 'I could be persuaded to discuss the price.' : 'My accountant is feeling unusually confident today.'}`;
+    line = `${opener} ${quantity} barrels at F$${unitPrice} per barrel. ${s.supplierTreasury < 45 ? 'I could be persuaded to discuss the price.' : 'My accountant is feeling unusually confident today.'}`;
   }
   if(lastReply==='ask_needs')line=`My priorities: keep twelve oil at home and earn export income. ${s.supplierTreasury<50?'My treasury would welcome a sale.':'My treasury can afford some patience.'} `+line;
   if(lastReply==='give_credit')line='You offered me the credit. My press office has already drafted the headline. Now we can discuss business without injuring the national ego. '+line;
@@ -103,7 +105,7 @@ export function petrovTurn(world: World, strategy: unknown = 'default'): PetrovO
 export function petrovReplies(world: World, offer = petrovTurn(world)): readonly ReplyOption[] {
   const cost = offer.quantity * offer.unitPrice;
   const options: ReplyOption[] = [];
-  if (offer.quantity > 0) options.push({ id:'accept', title:`Accept ${offer.quantity} oil for ${cost} treasury`, line:'We have a deal. Please describe it as a strategic triumph for both of us.', hint:'Pays and delivers today. Normal daily oil consumption still applies.', blocked:world.state.treasury < cost ? `Needs ${cost} treasury; you have ${world.state.treasury}.` : null, decision:'buy' });
+  if (offer.quantity > 0) options.push({ id:'accept', title:`Accept ${offer.quantity} barrels for F$${cost}`, line:'We have a deal. Please describe it as a strategic triumph for both of us.', hint:'Pays and delivers today. Normal daily oil consumption still applies.', blocked:world.state.treasury < cost ? `Needs F$${cost}; you have F$${world.state.treasury}.` : null, decision:'buy' });
   if (offer.quantity > 0 && offer.move !== 'counteroffer' && offer.move !== 'scarcity') options.push({ id:'counter',title:'Ask him to sharpen his pencil',line:'Lower the price and I will let you call this your idea. That should be worth something.',hint:'No shipment today. Petrov weighs his cash needs against his pride.',blocked:null,decision:'wait' });
   if (offer.move === 'pressure') options.push({ id:'apologize', title:'Give him a way to save face', line:'My speech was aimed at the situation. Your magnificent leadership was merely standing nearby.',hint:'Relations +10, approval -2. No shipment today; he reconsiders tomorrow.',blocked:null,decision:'wait' });
   else options.push({id:'reassure',title:'Offer a less dramatic relationship',line:'Let’s try being reliable neighbors. Our speechwriters can recover on their own time.',hint:'Relations +5. No shipment today; future cooperation may be cheaper.',blocked:null,decision:'wait'});

@@ -10,6 +10,7 @@ import { replay } from '../world/oil-crisis.ts';
 import { generateVoice, ClaudeRequestError } from './claude.ts';
 import { generateMax } from './sterling.ts';
 import { generateSocial } from './social.ts';
+import { generateVoss } from './voss.ts';
 import { validateInteractions } from '../../../shared/schemas/social.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
@@ -17,6 +18,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 export function createAgentMiddleware(root:string) {
   const agents=new AgentRegistry()
    .register(new CharacterAgent('/api/agent',async({world},c)=>({voice:await generateVoice(world,c.key,c.model,fetch,c.workspaceId)})))
+   .register(new CharacterAgent('/api/voss',async({world},c)=>({voice:await generateVoss(world,c.key,c.model,fetch,c.workspaceId)})))
    .register(new CharacterAgent('/api/max',async({world},c)=>({voice:await generateMax(world,c.key,c.model,c.workspaceId)})))
    .register(new CharacterAgent('/api/social',async({world,interactions,cabinetMessages,congressPromise},c)=>({posts:await generateSocial(world,interactions,c.key,c.model,c.workspaceId)})))
    .register(new CharacterAgent('/api/staff',async({world},c)=>({brief:await generateStaff(world,c.key,c.model,c.workspaceId)})));

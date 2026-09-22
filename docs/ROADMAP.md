@@ -79,3 +79,11 @@ Implemented the desk → state-selected tasks → explicit End day → overnight
 ### Fictional Congress
 
 Added a Congress tab with two chambers, six caucus speakers, saved randomized starting support, practical proposals for all three promises, concessions, explicit votes and congressional agenda tasks. Approval by both bodies fulfills the promise for election scoring, as requested. Physical policy delivery and new economic subsystems are outside this slice.
+
+### Direct congressional negotiation
+
+Removed the required free-text proposal from the Congress UI. Players select a campaign promise, choose a negotiation approach from a dropdown, or call a vote directly. Existing draft records remain replayable. Failed votes show the recorded chamber tally, exact majority shortfall, caucus opposition and unmet priorities. Later amendments do not rewrite the historical ballot. The one-congressional-action-per-day limit remains visible.
+
+### Promises lead to legislation
+
+On the Record now prioritizes Introduce bill for each untouched promise, followed by a direct route to that promise's congressional negotiation and vote. Introduction is a saved congressional action, uses the existing one-action-per-day allowance, and does not advance time or spend treasury. Legislative actions satisfy the public-agenda requirement as well as any congressional task. Studies and rhetorical choices remain in a secondary collapsible section. Earlier saves and congressional records still replay.
