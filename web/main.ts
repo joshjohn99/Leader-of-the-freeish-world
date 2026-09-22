@@ -1,3 +1,9 @@
+import './revenue.css';
+import {applyStrategic,strategicState} from '../server/src/diplomacy/strategic.ts';
+import {createStrategicPanel,strategicReportsMarkup} from './strategic-diplomacy.ts';
+import {pressQuestionDraft} from './press-questions.ts';
+import './press-questions.css';
+import {assignCabinetPromise} from '../server/src/world/oil-crisis.ts';
 import {congressRules} from '../server/src/congress/congress.ts';
 import {createCongressPanel} from './congress.ts';
 import {createFeedPresentation} from './feed-presentation.ts';
@@ -41,6 +47,13 @@ import type { SocialAction } from '../shared/schemas/social.ts';
 import type { FeedPlatform, FeedFilter } from './feed.ts';
 import { commandCenterMarkup, commandMarker, commandPanelFor } from './command-center.ts';
 import { mountMapboxMap } from './mapbox-map.ts';
+import { mountMusicPlayer } from './music.ts';
+import './office-navigation.css';
+import './president-setup.css';
+import { presidentFromForm } from './president-setup.ts';
+import { presidentFor, presidentTitle } from '../server/src/campaign/president.ts';
+
+mountMusicPlayer(document.getElementById('music-player')!);
 
 const $ = (selector:string) => document.querySelector<HTMLElement>(selector)!;
 const escape = (text:string) => text.replace(/[&<>"']/g,character=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]!));
@@ -48,6 +61,8 @@ const saveKey='freedoma-office-v1';
 let world=createWorld(); let saveWarning='';
 try { const saved=localStorage.getItem(saveKey);if(saved)world=replay(JSON.parse(saved)); }
 catch { saveWarning='The previous local session could not be restored. A fresh presidency has begun.'; }
+let notifiedDepositId=world.events.findLast(e=>e.treasuryDeposit)?.id??0;
+function announceTreasuryDeposit(){const event=world.events.findLast(e=>e.treasuryDeposit);if(event&&event.id>notifiedDepositId){notifiedDepositId=event.id;notify('Treasury deposit received',`+F$${event.treasuryDeposit!.amount} in tax receipts. Credited before overnight bills.`);}}
 const dayTransition=createDayTransition();let transitionDay=world.state.day,transitionStarting=false;
 let panel:'briefing'|'phone'|'social'|'action'|'reaction'|'max'|'news'|'bull'|'press'|'secretary'|'congress'|'voss'='briefing';
 let viewMode:'command'|'office'='command';
@@ -71,11 +86,12 @@ function celebratePromise(){const root=document.querySelector<HTMLElement>('#not
 function announceCompletedTasks(tasks:ReturnType<typeof agendaEngine.tasks>){const current=new Map(tasks.map(task=>[`${world.state.day}:${task.id}`,task.done]));if(taskSnapshotReady){for(const task of tasks){const key=`${world.state.day}:${task.id}`;if(task.done&&!taskSnapshot.get(key))notify('Task completed',task.title);}}taskSnapshot=current;taskSnapshotReady=true;}
 function announceFulfilledPromises(){const promises=congressRules.promises(world);const current=promises.map((_,index)=>{try{return!!congressRules.seed(world)&&congressRules.bill(world,index).authorized;}catch{return false;}});if(promiseSnapshotReady){current.forEach((fulfilled,index)=>{if(fulfilled&&!promiseSnapshot[index]){notify('Campaign promise fulfilled',`Congress approved: ${promises[index]??'Campaign promise'}`);celebratePromise();}});}promiseSnapshot=current;promiseSnapshotReady=true;}
 function updateDayTransition(){if(transitionStarting)return;dayTransition.update([...(generationBusy?['Petrov']:[]),...(maxBusy?['Max']:[]),...(staffBusy?['your staff']:[]),...(social.view().busy?['social feeds']:[])]);}
-function invalidateVoice(){
+function invalidateVoice(privateChange=false){
  const dayAdvanced=world.state.day>transitionDay;
  if(world.state.day>transitionDay){transitionStarting=true;dayTransition.begin(world.state.day);}else if(world.state.day<transitionDay){dayTransition.close();transitionStarting=false;}transitionDay=world.state.day;
-staffBrief=undefined;staffBusy=false;staffEpoch++;staffContext='';vossVoice=undefined;vossBusy=false;vossEpoch++;vossContext='';vossStatus='Offline Volkov · security channel';queueMicrotask(()=>{if(dayAdvanced||panel==='press')void ensureStaff();if(dayAdvanced&&world.events.length){void ensureVoice();void ensureMax();void ensureVoss();void social.refresh();}transitionStarting=false;updateDayTransition();});maxVoice=undefined;maxBusy=false;maxEpoch++;maxContext='';voice=undefined;voiceMode='offline';petrovStatus='';generationBusy=false;generationEpoch++;requestedContext='';social.worldChanged();}
+staffBrief=undefined;staffBusy=false;staffEpoch++;staffContext='';vossVoice=undefined;vossBusy=false;vossEpoch++;vossContext='';vossStatus='Offline Volkov · security channel';queueMicrotask(()=>{if(!privateChange&&(dayAdvanced||panel==='press'))void ensureStaff();if(dayAdvanced&&world.events.length){void ensureVoice();void ensureMax();void ensureVoss();void social.refresh();}transitionStarting=false;updateDayTransition();});maxVoice=undefined;maxBusy=false;maxEpoch++;maxContext='';voice=undefined;voiceMode='offline';petrovStatus='';generationBusy=false;generationEpoch++;requestedContext='';if(!privateChange)social.worldChanged();}
 async function ensureVoice(force=false){
+ if(strategicState(world)&&!force)return;
  if(agendaEngine.tasks(world).some(t=>t.id==='petrov'&&t.done))return;
  if(electionRules.finished(world))return;
   const context=JSON.stringify(world.events);
@@ -113,7 +129,7 @@ async function ensureStaff(force=false){
  if(electionRules.finished(world))return;
  if(!campaignRules.promises(world))return;const context=JSON.stringify(world.events);if(!force&&staffContext===context)return;
  staffContext=context;const epoch=++staffEpoch;staffBusy=true;if(panel==='press')render();
- try{const r=await fetch('/api/staff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({events:world.events}),signal:AbortSignal.timeout(48000)});const result=await r.json();if(epoch!==staffEpoch)return;if(result.mode!=='claude')throw Error(result.reason??'Staff unavailable');staffBrief=validateStaff(result.brief,world);staffStatus='Mara + PNN · Claude reactions';}
+ try{const r=await fetch('/api/staff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({events:world.events}),signal:AbortSignal.timeout(48000)});const result=await r.json();if(epoch!==staffEpoch)return;if(result.mode!=='claude')throw Error(result.reason??'Staff unavailable');staffBrief=validateStaff(result.brief,world);staffStatus='Mara + PNN + BULL · Claude reactions';}
  catch(error){if(epoch!==staffEpoch)return;staffBrief=undefined;staffStatus=error instanceof Error?error.message:'Offline briefing available';}
  if(epoch!==staffEpoch)return;staffBusy=false;updateDayTransition();if(panel==='press')render();
 }
@@ -128,45 +144,48 @@ const reactions:Record<Decision,{person:'mara'|'petrov'|'press';name:string;role
 };
 function speaker(person:'mara'|'petrov'|'press',name:string,role:string,status:string){return `<div class="speaker"><div class="portrait">${portrait(person)}</div><div><p class="speaker-name">${name}</p><div class="speaker-role">${role}</div><span class="speaker-status">${status}</span></div></div>`;}
 function updateChrome(){
+  const identity=presidentFor(world);document.querySelector('.brand small')!.textContent=identity?presidentTitle(world):'OFFICE OF THE PRESIDENT';
   updateDayTransition();
   $('#day').textContent=electionRules.finished(world)?'ELECTION NIGHT':`DAY ${String(world.state.day).padStart(2,'0')} / 30`;
   $('#phone-count').textContent='1';$('#social-count').textContent=String(social.view().posts.filter(post=>post.day===world.state.day).length);
-  $('#bull-count').textContent=String(world.events.filter(e=>e.localNews).length);
+  $('#bull-count').textContent=String(world.events.filter(e=>e.localNews).length+world.events.flatMap(e=>e.strategic?.reports??[]).filter(r=>r.source==='BULL').length);
  const activeDiplomacy=panel==='phone'||panel==='voss'||panel==='max'; if(activeDiplomacy)diplomacyOpen=true;
  const laneContent=diplomacyLane(world,voice,generationBusy,panel==='phone')+vossLane(world,vossVoice,vossBusy,panel==='voss')+maxLane(world,maxVoice,maxBusy);
  $('#diplomacy-lane').innerHTML=`<button id="diplomacy-toggle" class="phone-orb ${diplomacyOpen?'open':''}" aria-expanded="${diplomacyOpen}"><span aria-hidden="true">☎</span><small>${diplomacyOpen?'Hide private lines':'Open private lines'}</small></button><div class="diplomacy-menu" ${diplomacyOpen?'':'hidden'}>${laneContent}</div>`;
  $('#diplomacy-toggle').onclick=()=>{diplomacyOpen=!diplomacyOpen;updateChrome();};
  $('#resume-max').onclick=()=>openPanel('max');$('#resume-diplomacy').onclick=()=>openPanel('phone');$('#resume-voss').onclick=()=>openPanel('voss');
   for(const id of ['resume-max','resume-diplomacy','social-button','phone-button','pnn-button','bull-button','press-button']) (document.getElementById(id) as HTMLButtonElement).disabled=world.events.length===0;
-  $('#pnn-count').textContent=String(world.events.filter(e=>e.news&&!world.events.some(r=>r.newsResponse?.newsId===e.news!.id)).length);
-  const last=world.events.at(-1);$('#headline').textContent=last?(last.security?(last.security.reply==='limited_defense'?'KARMENIA REQUESTS SUPPORT • Cabinet asks where the red line is.':last.security.reply==='reject_attack'?'PRESIDENT REJECTS ATTACK REQUEST • Volkov calls it cowardice on live television.':'LYDIAN STRIP CRISIS • Freedoma chooses oversight before escalation.'):last.congress?'CONGRESS • The president’s platform meets the floor':last.agenda?(last.agenda.kind==='start'?'A NEW DAILY AGENDA • Your desk is ready.':'DAY COMPLETE • The country reacts.'):last.announcement?'PRESS OFFICE • New presidential announcement released':last.news?`PNN BREAKING • ${last.news.headline}`:last.newsResponse?'PNN • PRESIDENT RESPONDS TO WORLD EVENT':last.campaign?(last.campaign.kind==='launch'?'THREE PROMISES, ONE PRESIDENT • PNN begins keeping receipts.':'CAMPAIGN PROMISE UPDATE • PNN checks what actually changed.'):last.sterling?(last.sterling.reply==='fund'?'VOLT MOTORS PILOT STARTS • Max requests a larger ribbon.':'MAX STERLING LEAVES MEETING • J.com braces for impact.'):last.diplomacy?(last.diplomacy.reply==='accept'?'OIL DEAL SIGNED • Both sides claim to have invented diplomacy.':'TALKS CONTINUE • Fuel gauge requests a seat at the negotiating table.'):reactions[last.decision].headline):'PRESIDENT ARRIVES AT WORK • Nation cautiously surprised.';
+  $('#pnn-count').textContent=String(world.events.filter(e=>e.news&&!world.events.some(r=>r.newsResponse?.newsId===e.news!.id)).length+world.events.flatMap(e=>e.strategic?.reports??[]).filter(r=>r.source==='PNN').length);
+  const last=world.events.findLast(event=>!event.cabinetAssignment&&(!event.strategic||event.strategic.reports.length));$('#headline').textContent=last?(last.strategic?.reports.length?`${last.strategic.reports[0].source} • ${last.strategic.reports[0].headline}`:last.security?(last.security.reply==='limited_defense'?'KARMENIA REQUESTS SUPPORT • Cabinet asks where the red line is.':last.security.reply==='reject_attack'?'PRESIDENT REJECTS ATTACK REQUEST • Volkov calls it cowardice on live television.':'LYDIAN STRIP CRISIS • Freedoma chooses oversight before escalation.'):last.congress?'CONGRESS • The president’s platform meets the floor':last.agenda?(last.agenda.kind==='start'?'A NEW DAILY AGENDA • Your desk is ready.':'DAY COMPLETE • The country reacts.'):last.announcement?'PRESS OFFICE • New presidential announcement released':last.news?`PNN BREAKING • ${last.news.headline}`:last.newsResponse?'PNN • PRESIDENT RESPONDS TO WORLD EVENT':last.campaign?(last.campaign.kind==='launch'?'THREE PROMISES, ONE PRESIDENT • PNN begins keeping receipts.':'CAMPAIGN PROMISE UPDATE • PNN checks what actually changed.'):last.sterling?(last.sterling.reply==='fund'?'VOLT MOTORS PILOT STARTS • Max requests a larger ribbon.':'MAX STERLING LEAVES MEETING • J.com braces for impact.'):last.diplomacy?(last.diplomacy.reply==='accept'?'OIL DEAL SIGNED • Both sides claim to have invented diplomacy.':'TALKS CONTINUE • Fuel gauge requests a seat at the negotiating table.'):reactions[last.decision].headline):'PRESIDENT ARRIVES AT WORK • Nation cautiously surprised.';
 }
 const congressPanel=createCongressPanel(()=>world,next=>{world=next;saveWorld();invalidateVoice();render();},()=>panel==='congress');
 const officeTabNavigation=mountOfficeTabs(document.getElementById('office-tabs')!,openPanel);
 function markSettled(id:string,selector:string){if(agendaEngine.tasks(world).some(t=>t.id===id&&t.done)){$('#dialogue').insertAdjacentHTML('afterbegin','<p class="note">Today’s meeting is complete. Return to your desk for the next task.</p>');document.querySelectorAll<HTMLButtonElement>(selector).forEach(b=>b.disabled=true);}}
-function showCommandCenter(){viewMode='command';panel='briefing';viewingEvent=undefined;render();}
+function showCommandCenter(){viewMode='command';panel='briefing';viewingEvent=undefined;render();$('#command-center').scrollTop=0;document.querySelector('.office')!.scrollIntoView({behavior:'instant',block:'start'});document.querySelector<HTMLButtonElement>('[data-command-office]')?.focus({preventScroll:true});}
 function renderCommandCenter(){
  const host=$('#command-center');host.hidden=false;host.innerHTML=commandCenterMarkup(world);
  const strategyMap=host.querySelector<HTMLElement>('.strategy-map');
  if(strategyMap){const mapContainer=document.createElement('div');mapContainer.id='mapbox-map';mapContainer.className='mapbox-map';mapContainer.setAttribute('aria-label','Mapbox fictional political map');strategyMap.prepend(mapContainer);const buttons=[...strategyMap.querySelectorAll<HTMLButtonElement>('.map-markers [data-marker]')];mountMapboxMap(mapContainer,buttons,world,next=>{viewMode='office';openPanel(next);});}
  const campaignForm=document.querySelector<HTMLFormElement>('#command-campaign-form');
- if(campaignForm)campaignForm.onsubmit=event=>{event.preventDefault();try{world=startPresidency(world,[0,1,2].map(i=>(document.getElementById(`command-promise-${i}`) as HTMLTextAreaElement).value));saveWorld();invalidateVoice();panel='briefing';viewMode='command';render();void ensureVoice();void ensureMax();}catch(error){const message=document.querySelector<HTMLElement>('#command-campaign-error');if(message)message.textContent=error instanceof Error?error.message:'Check your promises.';}};
+ if(campaignForm)campaignForm.onsubmit=event=>{event.preventDefault();try{world=startPresidency(world,[0,1,2].map(i=>(document.getElementById(`command-promise-${i}`) as HTMLTextAreaElement).value),presidentFromForm(campaignForm));saveWorld();invalidateVoice();panel='briefing';viewMode='command';render();void ensureVoice();void ensureMax();}catch(error){const message=document.querySelector<HTMLElement>('#command-campaign-error');if(message)message.textContent=error instanceof Error?error.message:'Check your promises.';}};
  document.querySelectorAll<HTMLElement>('[data-command-office]').forEach(button=>button.onclick=()=>{viewMode='office';render();});
  document.querySelectorAll<HTMLButtonElement>('[data-command-open]').forEach(button=>button.onclick=()=>{viewMode='office';openPanel(button.dataset.commandOpen!);});
  document.querySelectorAll<HTMLButtonElement>('[data-marker]').forEach(button=>button.onclick=()=>{const marker=commandMarker(world,button.dataset.marker!);if(!marker)return;viewMode='office';openPanel(commandPanelFor(marker));});
  const end=document.querySelector<HTMLButtonElement>('[data-command-end]');if(end)end.onclick=()=>{try{world=endDay(world);if(!electionRules.finished(world))world=beginDay(world);saveWorld();invalidateVoice();render();}catch(error){host.insertAdjacentHTML('beforeend',`<p class="command-error">${escape(error instanceof Error?error.message:'Could not end the day.')}</p>`);}};
 }
 function render(){
+  if(world.events.length&&!strategicState(world)&&!electionRules.finished(world)){world=applyStrategic(world,{kind:'init',seed:crypto.getRandomValues(new Uint32Array(1))[0]});saveWorld();}
+  cabinet.worldChanged();
   if(world.events.length&&!activeDay(world)&&!electionRules.finished(world)){world=beginDay(world);saveWorld();}
 
   officeTabNavigation.update(panel,world.events.length>0&&!electionRules.finished(world));
-  updateChrome();const todayTasks=agendaEngine.tasks(world);announceCompletedTasks(todayTasks);announceFulfilledPromises();$('#agenda-strip').textContent=`Today: ${todayTasks.filter(t=>t.done).length}/${todayTasks.length} tasks complete · Back to desk →`;$('#panel-label').textContent=panel==='bull'?'BULL · LOCAL DESK':panel==='voss'?'KARMENIA · SECURITY CHANNEL':panel==='congress'?'CONGRESS · YOUR CAMPAIGN PLATFORM':panel==='secretary'?'PRESS SECRETARY · ANNOUNCEMENTS':panel==='press'?'PRESS BRIEFING · ON THE RECORD':panel==='news'?'PNN · WORLD DESK':panel==='max'?'THE BILLIONAIRE IS TYPING':panel==='phone'?'THE PRESIDENTIAL LINE':panel==='social'?'THE PUBLIC SQUARE':panel==='action'?'YOUR PRESIDENTIAL APPEARANCE':panel==='reaction'?'THE CONSEQUENCES HAVE ARRIVED':'PRESIDENTIAL OFFICE';
+  updateChrome();const todayTasks=agendaEngine.tasks(world);announceCompletedTasks(todayTasks);announceFulfilledPromises();announceTreasuryDeposit();$('#agenda-strip').textContent=`Today: ${todayTasks.filter(t=>t.done).length}/${todayTasks.length} tasks complete · Back to desk →`;$('#panel-label').textContent=panel==='bull'?'BULL · LOCAL DESK':panel==='voss'?'KARMENIA · SECURITY CHANNEL':panel==='congress'?'CONGRESS · YOUR CAMPAIGN PLATFORM':panel==='secretary'?'PRESS SECRETARY · ANNOUNCEMENTS':panel==='press'?'PRESS BRIEFING · ON THE RECORD':panel==='news'?'PNN · WORLD DESK':panel==='max'?'THE BILLIONAIRE IS TYPING':panel==='phone'?'THE PRESIDENTIAL LINE':panel==='social'?'THE PUBLIC SQUARE':panel==='action'?'YOUR PRESIDENTIAL APPEARANCE':panel==='reaction'?'THE CONSEQUENCES HAVE ARRIVED':'PRESIDENTIAL OFFICE';
   if(!world.events.length&&viewMode==='command'){document.querySelector('main')!.classList.add('is-command-center');$('#broadcast-stage').hidden=true;document.querySelector('.office')!.classList.add('command-mode');document.querySelector('.office')!.classList.remove('is-broadcast');renderCommandCenter();return;}
-  if(!world.events.length){document.querySelector('main')!.classList.remove('is-command-center');$('#broadcast-stage').hidden=true;document.querySelector('.office')!.classList.remove('is-broadcast','command-mode');$('#command-center').hidden=true;$('#dialogue').innerHTML=campaignOpening();$('#campaign-form').onsubmit=event=>{event.preventDefault();try{world=startPresidency(world,[0,1,2].map(i=>(document.getElementById(`promise-${i}`) as HTMLTextAreaElement).value));saveWorld();invalidateVoice();panel='briefing';viewMode='command';render();void ensureVoice();void ensureMax();}catch(error){$('#campaign-error').textContent=error instanceof Error?error.message:'Check your promises.';}};return;}
+  if(!world.events.length){document.querySelector('main')!.classList.remove('is-command-center');$('#broadcast-stage').hidden=true;document.querySelector('.office')!.classList.remove('is-broadcast','command-mode');$('#command-center').hidden=true;$('#dialogue').innerHTML=campaignOpening();$('#campaign-form').onsubmit=event=>{event.preventDefault();try{world=startPresidency(world,[0,1,2].map(i=>(document.getElementById(`promise-${i}`) as HTMLTextAreaElement).value),presidentFromForm(event.currentTarget as HTMLFormElement));saveWorld();invalidateVoice();panel='briefing';viewMode='command';render();void ensureVoice();void ensureMax();}catch(error){$('#campaign-error').textContent=error instanceof Error?error.message:'Check your promises.';}};return;}
   if(viewMode==='command'&&panel==='briefing'){document.querySelector('main')!.classList.add('is-command-center');document.querySelector('.office')!.classList.add('command-mode');document.querySelector('.office')!.classList.remove('is-broadcast');$('#broadcast-stage').hidden=true;renderCommandCenter();return;}
   document.querySelector('main')!.classList.remove('is-command-center');document.querySelector('.office')!.classList.remove('command-mode');$('#command-center').hidden=true;
   document.querySelector('.confidential')!.textContent=panel==='press'||panel==='action'?'ON THE RECORD':panel==='phone'||panel==='max'?'PRIVATE CONVERSATION':'OFFICE OF THE PRESIDENT';
-  const last=viewingEvent??world.events.at(-1);
+  const last=viewingEvent??world.events.findLast(event=>!event.cabinetAssignment&&!event.strategic);
   if(panel!=='social')document.querySelector('.briefing')!.scrollTop=0;
   const stage=$('#broadcast-stage');
   stage.hidden=panel!=='action';
@@ -174,7 +193,7 @@ function render(){
   if(panel==='action' && last&&!electionRules.finished(world)){
     const broadcast=broadcastFor(last);
     stage.innerHTML=`<div class="broadcast-header"><span><i></i> FREEDOMA NOW <b>/ DAY ${broadcast.day} RECORDING</b></span><button id="leave-broadcast">Back to office ↗</button></div><div class="broadcast-art">${actionArtworkFor(last)}</div><div class="broadcast-lower"><span class="broadcast-format">${broadcast.format}</span><h2>${broadcast.title}</h2><p>${escape(broadcast.caption)}</p><span class="broadcast-venue">${broadcast.venue}</span></div>`;
-    $('#dialogue').innerHTML=`<div class="president-id"><span class="seal">✦</span><div><p class="speaker-name">You, Mr. President.</p><span class="speaker-role">FREEDOMA / ON THE RECORD</span></div></div><span class="case-tag">${broadcast.format} · DAY ${broadcast.day}</span><h2>The cameras<br>are rolling.</h2><blockquote class="presidential-speech">“${escape(broadcast.speech)}”</blockquote><div class="note">${broadcast.outcome}</div><button class="reply-button" id="hear-response">See how that went over →</button><p class="aside-bottom">${viewingEvent?'Replaying a recorded appearance.':'Your decision is already recorded.'} Watching or replaying a scene never advances time.</p>`;
+    $('#dialogue').innerHTML=`<div class="president-id"><span class="seal">✦</span><div><p class="speaker-name">${escape(presidentTitle(world))}</p><span class="speaker-role">FREEDOMA / ON THE RECORD</span></div></div><span class="case-tag">${broadcast.format} · DAY ${broadcast.day}</span><h2>The cameras<br>are rolling.</h2><blockquote class="presidential-speech">“${escape(broadcast.speech)}”</blockquote><div class="note">${broadcast.outcome}</div><button class="reply-button" id="hear-response">See how that went over →</button><p class="aside-bottom">${viewingEvent?'Replaying a recorded appearance.':'Your decision is already recorded.'} Watching or replaying a scene never advances time.</p>`;
     const finish=()=>{panel='reaction';render();};$('#hear-response').onclick=finish;$('#leave-broadcast').onclick=finish;
     return;
   }
@@ -193,10 +212,10 @@ function render(){
     $('#continue').onclick=()=>{viewingEvent=undefined;panel='briefing';render();}; $('#all-trends').onclick=openLedger;$('#call-petrov').onclick=()=>openPanel('phone');$('#see-posts').onclick=()=>openPanel('social'); return;
   }
   if(panel==='news'){
-   $('#dialogue').innerHTML=newsMarkup(world);$('#leave-news').onclick=()=>openPanel('briefing');
+   $('#dialogue').innerHTML=strategicReportsMarkup(world,'PNN')+newsMarkup(world);bindStrategicReports();$('#leave-news').onclick=()=>openPanel('briefing');
    document.querySelectorAll<HTMLButtonElement>('[data-news-action]').forEach(button=>button.onclick=()=>{try{world=respondToNews(world,button.dataset.newsId!,button.dataset.newsAction);saveWorld();invalidateVoice();render();void ensureVoice();void ensureMax();}catch(error){$('#headline').textContent=error instanceof Error?error.message:'Response unavailable';}});return;
   }
-  if(panel==='bull'){$('#dialogue').innerHTML=localNewsMarkup(world);$('#leave-local-news').onclick=()=>openPanel('briefing');return;}
+  if(panel==='bull'){$('#dialogue').innerHTML=strategicReportsMarkup(world,'BULL')+localNewsMarkup(world);bindStrategicReports();$('#leave-local-news').onclick=()=>openPanel('briefing');return;}
   if(panel==='max'){
    const offer=maxTurn(world,maxVoice?.strategy);$('#dialogue').innerHTML=maxMarkup(world,maxVoice,maxBusy,maxStatus);markSettled('max','[data-max-reply]');
    $('#leave-max').onclick=()=>openPanel('briefing');$('#max-retry').onclick=()=>void ensureMax(true);
@@ -211,6 +230,7 @@ function render(){
     const offline=document.querySelector<HTMLButtonElement>('#voss-offline');if(offline)offline.onclick=()=>{vossEpoch++;vossBusy=false;vossVoice=undefined;vossStatus='Offline Volkov';render();};
     document.querySelectorAll<HTMLButtonElement>('[data-voss-reply]').forEach(button=>button.onclick=()=>{try{world=replyToVoss(world,button.dataset.vossReply,offer.id,offer.strategy,vossVoice?.line,vossVoice?.replies.find(r=>r.id===button.dataset.vossReply)?.line);saveWorld();invalidateVoice();render();void ensureVoss(true);}catch(error){$('#headline').textContent=error instanceof Error?error.message:'Security position unavailable.';}});return;
   }
+  if(panel==='phone'&&strategicState(world)){strategicPanel.render($('#dialogue'));return;}
   if(panel==='phone'){
     const offer=petrovTurn(world,voice?.strategy??'default');
     $('#dialogue').innerHTML=conversationMarkup(world,voice,voiceMode,generationBusy,petrovStatus);markSettled('petrov','[data-reply]');$('#petrov-retry').onclick=()=>void ensureVoice(true);
@@ -248,22 +268,36 @@ function render(){
     congressPanel.selectPromise(index);openPanel('congress');
     }catch(error){$('#headline').textContent=error instanceof Error?error.message:'Bill action unavailable';}
   });
+  document.querySelectorAll<HTMLButtonElement>('[data-press-answer]').forEach(button=>button.onclick=()=>{
+    const draft=pressQuestionDraft(world,staffBrief,button.dataset.pressAnswer!);
+    openPanel('secretary');
+    const input=document.getElementById('announcement-text') as HTMLTextAreaElement;
+    input.value=draft;input.focus();input.setSelectionRange(draft.length,draft.length);
+  });
+  document.querySelectorAll<HTMLButtonElement>('[data-promise-owner]').forEach(button=>button.onclick=()=>cabinet.open(Number(button.dataset.promiseOwner)));
   const refreshStaff=document.getElementById('refresh-staff');if(refreshStaff)refreshStaff.onclick=()=>void ensureStaff(true);
   document.querySelectorAll<HTMLButtonElement>('[data-promise-action]').forEach(button=>button.onclick=()=>{try{const index=Number(button.dataset.promise),action=button.dataset.promiseAction;const chosen=staffBrief?.choices.find(c=>c.index===index&&c.action===action);world=decidePromise(world,index,action,chosen?.line);saveWorld();invalidateVoice();viewingEvent=undefined;render();void ensureVoice();void ensureMax();}catch(error){$('#headline').textContent=error instanceof Error?error.message:'Promise decision unavailable';}});
 
 }
 function showAppearance(){if(matchMedia('(max-width:760px)').matches)document.querySelector('.office')!.scrollIntoView({behavior:'auto',block:'start'});}
+function bindStrategicReports(){document.querySelectorAll<HTMLButtonElement>('[data-open-strategic]').forEach(b=>b.onclick=()=>openPanel('phone'));}
 function openPanel(name:string){if(name==='congress'&&!congressRules.seed(world)&&!electionRules.finished(world)&&world.events.length){world=seatCongress(world,crypto.getRandomValues(new Uint32Array(1))[0]);saveWorld();}if(!world.events.length){panel='briefing';render();return;}viewMode='office';viewingEvent=undefined;panel=name==='bull'?'bull':name==='voss'?'voss':name==='congress'?'congress':name==='secretary'?'secretary':name==='press'?'press':name==='news'?'news':name==='max'?'max':name==='phone'?'phone':name==='social'?'social':'briefing';render();if(panel==='press')void ensureStaff();if(panel==='max')void ensureMax();if(panel==='phone')void ensureVoice();if(panel==='voss')void ensureVoss();if(panel==='social')void social.refresh();if(matchMedia('(max-width:760px)').matches)document.querySelector('.briefing')!.scrollIntoView({behavior:'auto',block:'start'});}
 $('#pnn-button').onclick=()=>openPanel('news');$('#bull-button').onclick=()=>openPanel('bull');$('#headline').onclick=()=>openPanel(world.events.at(-1)?.localNews?'bull':'news');$('#headline').onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openPanel(world.events.at(-1)?.localNews?'bull':'news');}};
 $('#agenda-strip').onclick=()=>openPanel('briefing');
 $('#press-button').onclick=()=>openPanel('press');
 $('#social-button').onclick=()=>openPanel('social');$('#phone-button').onclick=()=>openPanel('phone');$('#briefing-button').onclick=showCommandCenter;
-const cabinet=createCabinet(()=>world,()=>openPanel('press'));
+$('#return-map').onclick=showCommandCenter;
+const cabinet=createCabinet(()=>world,{
+ assign(index,secretaryId){world=assignCabinetPromise(world,index,secretaryId);saveWorld();invalidateVoice(true);render();},
+ congress(index,chamber){congressPanel.selectPromise(index,chamber);openPanel('congress');},
+ promises(){openPanel('press');}
+});
+const strategicPanel=createStrategicPanel(()=>world,(next,publicChange)=>{world=next;saveWorld();if(publicChange)invalidateVoice();render();},()=>panel==='phone',{leave:()=>openPanel('briefing'),adviser:id=>cabinet.consult(id),ai:openAiSettings});
 const cabinetButton=document.createElement('button');cabinetButton.id='cabinet-button';cabinetButton.className='quiet';cabinetButton.textContent='Cabinet';cabinetButton.setAttribute('aria-haspopup','dialog');$('#reset').before(cabinetButton);cabinetButton.onclick=()=>cabinet.open();
-$('#reset').onclick=()=>{if(!confirm('Start a new presidency? This clears this browser’s current playtest.'))return;world=createWorld();taskSnapshot.clear();taskSnapshotReady=false;promiseSnapshot=[];promiseSnapshotReady=false;document.querySelector('#notification-root')?.replaceChildren();congressPanel.reset();feedPresentation.reset();cabinet.reset();invalidateVoice();social.worldChanged(true);try{localStorage.removeItem(saveKey);}catch{}viewingEvent=undefined;panel='briefing';render();};
+$('#reset').onclick=()=>{if(!confirm('Start a new presidency? This clears this browser’s current playtest.'))return;world=createWorld();notifiedDepositId=0;taskSnapshot.clear();taskSnapshotReady=false;promiseSnapshot=[];promiseSnapshotReady=false;document.querySelector('#notification-root')?.replaceChildren();strategicPanel.reset();congressPanel.reset();feedPresentation.reset();cabinet.reset();invalidateVoice();social.worldChanged(true);try{localStorage.removeItem(saveKey);}catch{}viewingEvent=undefined;panel='briefing';render();};
 function openLedger(){
   $('#stats').innerHTML=chartsPanel(world);
-  $('#history').innerHTML=world.events.length?`<strong>On the record</strong><p class="history-intro">Replay an appearance without changing the world.</p>${world.events.filter(event=>!event.diplomacy&&!event.sterling&&!event.agenda&&!event.congress).map(event=>`<button class="history-event" data-replay="${event.id}"><span>DAY ${event.after.day-(event.timing==='day-action'?0:1)}</span><b>${broadcastFor(event).format}</b><span>Watch ↗</span></button>`).join('')}`:'No appearances yet. Your first choice will create one.';
+  $('#history').innerHTML=world.events.length?`<strong>On the record</strong><p class="history-intro">Replay an appearance without changing the world.</p>${world.events.filter(event=>!event.strategic&&!event.cabinetAssignment&&!event.diplomacy&&!event.sterling&&!event.agenda&&!event.congress).map(event=>`<button class="history-event" data-replay="${event.id}"><span>DAY ${event.after.day-(event.timing==='day-action'?0:1)}</span><b>${broadcastFor(event).format}</b><span>Watch ↗</span></button>`).join('')}`:'No appearances yet. Your first choice will create one.';
   document.querySelectorAll<HTMLButtonElement>('[data-replay]').forEach(button=>button.onclick=()=>{viewingEvent=world.events.find(event=>event.id===Number(button.dataset.replay));($('#ledger') as HTMLDialogElement).close();panel='action';render();showAppearance();});
   ($('#ledger') as HTMLDialogElement).showModal();$('#ledger-toggle').setAttribute('aria-expanded','true');
 }

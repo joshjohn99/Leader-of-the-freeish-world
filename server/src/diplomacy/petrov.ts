@@ -34,9 +34,9 @@ export interface ReplyOption {
  * dialogue is an offline realization of that move, not a language-model call. */
 function baseTurn(world: World): PetrovOffer {
   const s = world.state;
-  const last = world.events.at(-1);
+  const last = world.events.findLast(e=>!e.cabinetAssignment);
   const latestTalk = world.events.findLast(event => event.diplomacy)?.diplomacy;
-  const recentThreats = world.events.slice(-4).filter(event => event.decision === 'threaten').length;
+  const recentThreats = world.events.filter(e=>!e.cabinetAssignment).slice(-4).filter(event => event.decision === 'threaten').length;
   const lastReply = last?.diplomacy?.reply;
   const available = Math.max(0, s.supplierOil - 12); // Petrov protects a domestic reserve.
   const scored: { move: PetrovMove; score: number }[] = [
@@ -111,7 +111,7 @@ export function petrovReplies(world: World, offer = petrovTurn(world)): readonly
   else options.push({id:'reassure',title:'Offer a less dramatic relationship',line:'Let’s try being reliable neighbors. Our speechwriters can recover on their own time.',hint:'Relations +5. No shipment today; future cooperation may be cheaper.',blocked:null,decision:'wait'});
   if (offer.move !== 'pressure' && offer.move !== 'scarcity') options.push({id:'threaten',title:'Tell him Freedoma has other options',line:'Keep pushing and we will take our business elsewhere. The elsewhere is being finalized.',hint:'Relations -15. Risks a pride premium on his next offer.',blocked:null,decision:'threaten'});
   if(offer.move==='pressure' || (offer.move==='counteroffer' && offer.unitPrice>1))options.push({id:'challenge',title:'Challenge the pride premium',line:'Is this an oil price or a fee for bruising your ego? Let your accountant answer.',hint:'Relations -3. No shipment today; forces a price review, which he may refuse.',blocked:null,decision:'wait'});
-  if(world.events.at(-1)?.diplomacy?.reply!=='ask_needs')options.push({id:'ask_needs',title:offer.move==='scarcity'?'Ask what he can release later':'Ask what he actually needs',line:'Forget the podium for a moment. What is stopping us from making a useful deal?',hint:'No shipment today. He explains his priorities before your next reply.',blocked:null,decision:'wait'});
+  if(world.events.findLast(e=>!e.cabinetAssignment)?.diplomacy?.reply!=='ask_needs')options.push({id:'ask_needs',title:offer.move==='scarcity'?'Ask what he can release later':'Ask what he actually needs',line:'Forget the podium for a moment. What is stopping us from making a useful deal?',hint:'No shipment today. He explains his priorities before your next reply.',blocked:null,decision:'wait'});
   if(offer.move==='partnership'||offer.move==='counteroffer')options.push({id:'give_credit',title:'Let him claim the diplomatic victory',line:'You can take the headline. I would prefer to take the oil eventually.',hint:'Relations +8, approval -1. No shipment today; opens a more cooperative round.',blocked:null,decision:'wait'});
   options.push({id:'decline',title:'End the call without a deal',line:'We’ll handle this ourselves. Please disregard any frantic callback from my staff.',hint:'No purchase today. Normal consumption continues; return to domestic choices.',blocked:null,decision:'wait'});
   return Object.freeze(options.map(option=>Object.freeze(option)));

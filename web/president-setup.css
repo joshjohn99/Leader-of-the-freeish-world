@@ -1,0 +1,10 @@
+.president-name-fields { border:0; border-bottom:1px solid #b8a06d55; padding:0 0 18px; margin:18px 0; min-width:0; }
+.president-name-fields legend { font:600 11px Arial; letter-spacing:.7px; padding:0; margin-bottom:9px; }
+.president-name-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+#campaign-form .president-name-grid label,.command-start .president-name-grid label { display:block; margin:0; font:11px Arial; }
+.president-name-fields input { display:block; width:100%; min-width:0; padding:11px; margin-top:7px; border:1px solid #b9b5a2; border-radius:4px; background:#fffdf6; color:#2b4839; font:14px Arial; }
+.command-start .president-name-fields { color:#e5d1a1; }
+.command-start .president-name-fields input { background:#102521; border-color:#ffffff35; color:#f4ecd9; font-size:12px; padding:10px 8px; }
+.president-name-fields input:focus-visible { outline:2px solid #c9a557; outline-offset:2px; }
+.brand small { max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media(max-width:400px) { .president-name-grid { grid-template-columns:1fr; } }

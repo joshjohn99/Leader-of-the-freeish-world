@@ -1,0 +1,11 @@
+.press-questions { margin:22px 0; }
+.press-question { margin:12px 0; padding:16px; background:#f7f2e7; border:1px solid #c6bda6; border-left:4px solid #476575; border-radius:5px; }
+.press-question--bull { border-left-color:#9e3434; background:#f8eee5; }
+.press-question header { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.press-question header b { background:#314f62; color:#fff; padding:5px 8px; font:800 13px Arial,sans-serif; letter-spacing:1px; }
+.press-question--bull header b { background:#923131; }
+.press-question header span { font:11px Arial,sans-serif; color:#5c594f; }
+.press-question h3 { margin:12px 0 8px; font-size:17px; overflow-wrap:anywhere; }
+.press-question-line { line-height:1.55; margin:8px 0; overflow-wrap:anywhere; }
+.press-question .text-button { text-align:left; white-space:normal; line-height:1.5; }
+.press-question button:focus-visible { outline:2px solid #923131; outline-offset:4px; }

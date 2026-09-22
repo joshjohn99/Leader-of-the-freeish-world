@@ -1,4 +1,7 @@
+import {scheduledDeposit} from '../economy/revenue.ts';
+import {applyStrategic,settleStrategic} from '../diplomacy/strategic.ts';
 import {congressRules,chambers} from '../congress/congress.ts';
+import {validateAssignment} from '../cabinet/promises.ts';
 import type {Chamber,CongressAction} from '../congress/congress.ts';
 import {activeDay,agendaEngine} from '../agenda/agenda.ts';
 import {electionRules} from '../election/election.ts';
@@ -6,6 +9,7 @@ import {worldEventEngine,newsOptions} from '../events/world-news.ts';
 import {localNewsEngine} from '../events/local-news.ts';
 import type {NewsResponse} from '../events/world-news.ts';
 import {campaignRules} from '../campaign/campaign.ts';
+import {validatePresident} from '../campaign/president.ts';
 import type {CampaignRecord,PromiseAction} from '../campaign/campaign.ts';
 import { maxTurn, maxReplies, pilotDaysLeft } from '../billionaires/sterling.ts';
 import type { MaxRecord } from '../billionaires/sterling.ts';
@@ -37,11 +41,21 @@ export function beginDay(world:World):World {
  const event:WorldEvent=Object.freeze({agenda:Object.freeze({kind:'start' as const,tasks}),id:world.events.length+1,decision:'wait',messages:Object.freeze(['The daily agenda is ready. Decisions stay in this day until End day.']),after:world.state});
  return freezeWorld({...world.state},[...world.events,event]);
 }
-export function endDay(world:World):World {
+export function assignCabinetPromise(world:World,index:unknown,secretaryId:unknown):World {
+ const assignment=validateAssignment(world,index,secretaryId);
+ if(electionRules.finished(world))throw Error('Your term has ended.');
+ const event:WorldEvent=Object.freeze({cabinetAssignment:Object.freeze(assignment),timing:'conversation',id:world.events.length+1,decision:'wait',messages:Object.freeze(['Cabinet promise owner assigned. No policy enacted.']),after:world.state});
+ return freezeWorld({...world.state},[...world.events,event]);
+}
+export function endDay(world:World,withScheduledRevenue=true):World {
  const day=activeDay(world);if(!day)throw Error('No daily agenda is open.');
  if(agendaEngine.tasks(world).some(task=>!task.done))throw Error('Complete today’s agenda before ending the day.');
- const s={...world.state},messages:string[]=[];
- const policy=day.events.find(e=>e.timing==='day-action'&&!e.diplomacy&&!e.sterling&&!e.security&&!e.campaign&&!e.newsResponse&&!e.announcement&&!e.congress);
+ const treasuryDeposit=withScheduledRevenue?scheduledDeposit(world.state.day+1):undefined;
+ // Credit receipts before contractual payments and deployment upkeep; history stays immutable.
+ const fundedWorld=treasuryDeposit?{...world,state:{...world.state,treasury:world.state.treasury+treasuryDeposit.amount}}:world;
+ const settlement=settleStrategic(fundedWorld);
+ const s={...(settlement?.state??fundedWorld.state)},messages:string[]=[...(treasuryDeposit?[`Treasury deposit: +F$${treasuryDeposit.amount} in tax receipts for day ${treasuryDeposit.day}, credited before overnight bills.`]:[]),...(settlement?.messages??[])];
+ const policy=day.events.find(e=>e.timing==='day-action'&&!e.strategic&&!e.diplomacy&&!e.sterling&&!e.security&&!e.campaign&&!e.newsResponse&&!e.announcement&&!e.congress);
  let demand=policy?.decision==='ration'?3:policy?.decision==='subsidize'?8:6;
  if(pilotDaysLeft(world)>0){demand=Math.max(0,demand-2);messages.push('Volt buses reduce today’s oil demand by 2.');}
  if(policy?.decision!=='subsidize')s.subsidyDays=0;
@@ -49,7 +63,7 @@ export function endDay(world:World):World {
  s.approval=clamp(s.approval+(shortage?-shortage*3:1),0,100);s.treasury+=3;s.supplierOil+=4;s.day++;
  messages.push(`Citizens consume ${used} oil against demand of ${demand}.`,shortage?`Shortage: ${shortage} oil. Approval -${shortage*3}.`:'Demand met. Approval +1.','Treasury receives 3 daily revenue. Petrovia produces 4 oil.');
  const news=worldEventEngine.next(world);const localNews=localNewsEngine.next(world);if(news)messages.push(`PNN: ${news.headline}`);if(localNews)messages.push(`BULL: ${localNews.headline}`);
- const event:WorldEvent=Object.freeze({agenda:Object.freeze({kind:'end' as const}),...(news?{news}:{}),...(localNews?{localNews}:{}),id:world.events.length+1,decision:'wait',messages:Object.freeze(messages),after:Object.freeze(s)});
+ const event:WorldEvent=Object.freeze({agenda:Object.freeze({kind:'end' as const}),...(treasuryDeposit?{treasuryDeposit}:{}),...(settlement?{strategic:settlement.record}:{}),...(news?{news}:{}),...(localNews?{localNews}:{}),id:world.events.length+1,decision:'wait',messages:Object.freeze(messages),after:Object.freeze(s)});
  return freezeWorld(s,[...world.events,event]);
 }
 export function seatCongress(world:World,seed:unknown):World {
@@ -79,9 +93,9 @@ export function availableDecisions(world: World): { decision: Decision; descript
     return { decision, description, blocked };
   });
 }
-export function startPresidency(world:World,values:unknown):World {
- if(world.events.length)throw Error('A presidency is already underway.');const promises=campaignRules.validatePromises(values);
- const event:WorldEvent=Object.freeze({campaign:Object.freeze({kind:'launch' as const,promises}),id:1,decision:'wait',messages:Object.freeze(['Three campaign promises recorded. No policies enacted.']),after:world.state});return freezeWorld({...world.state},[event]);
+export function startPresidency(world:World,values:unknown,identity?:unknown):World {
+ if(world.events.length)throw Error('A presidency is already underway.');const promises=campaignRules.validatePromises(values);const president=identity===undefined?undefined:validatePresident(identity);
+ const event:WorldEvent=Object.freeze({campaign:Object.freeze({kind:'launch' as const,promises,...(president?{president}:{})}),id:1,decision:'wait',messages:Object.freeze(['Three campaign promises recorded. No policies enacted.']),after:world.state});return freezeWorld({...world.state},[event]);
 }
 export function decidePromise(world:World,index:number,action:unknown,line?:string,withNews=true,enforceTerm=true):World {
  const option=campaignRules.options(world,index).find(o=>o.id===action);if(!option||option.blocked)throw Error(option?.blocked??'That promise action is unavailable.');
@@ -142,7 +156,7 @@ function advance(world: World, input: unknown, diplomacy?: DiplomacyRecord, ster
     if(announcement&&committed.some(e=>e.announcement))throw Error('An announcement has already been published today.');
     if(security&&day.events.some(e=>e.security&&!['ask_evidence','decline_call'].includes(e.security.reply)))throw Error('Your Karmenia position is settled for today.');
     if(campaign?.kind==='decision'&&committed.some(e=>e.campaign?.kind==='decision'&&e.campaign.index===campaign.index))throw Error('This promise has already been addressed today.');
-    if(!diplomacy&&!sterling&&!campaign&&!announcement&&!newsResponse&&committed.some(e=>!e.diplomacy&&!e.sterling&&!e.campaign&&!e.announcement&&!e.newsResponse&&!e.congress))throw Error('Today’s domestic policy is already set.');
+    if(!diplomacy&&!sterling&&!campaign&&!announcement&&!newsResponse&&committed.some(e=>!e.strategic&&!e.diplomacy&&!e.sterling&&!e.campaign&&!e.announcement&&!e.newsResponse&&!e.congress))throw Error('Today’s domestic policy is already set.');
   }
   const option = availableDecisions(world).find(option => option.decision === input);
   if (!option) throw new Error('Unknown decision.');
@@ -240,7 +254,7 @@ function advance(world: World, input: unknown, diplomacy?: DiplomacyRecord, ster
 export function replay(events: readonly WorldEvent[]): World {
   let world = createWorld();
   for (const event of events) {
-    world = event.congress?(event.congress.kind==='founding'?seatCongress(world,event.congress.seed):actInCongress(world,event.congress.index,event.congress.chamber,event.congress.action,event.congress.text)):event.agenda?(event.agenda.kind==='start'?beginDay(world):endDay(world)):event.announcement?publishAnnouncement(world,event.announcement.text,!!event.news,false):event.newsResponse?respondToNews(world,event.newsResponse.newsId,event.newsResponse.action,!!event.news,false):event.campaign?(event.campaign.kind==='launch'?startPresidency(world,event.campaign.promises):decidePromise(world,event.campaign.index,event.campaign.action,event.campaign.line,!!event.news,false)):event.sterling?replyToMax(world,event.sterling.reply,event.sterling.offer.id,event.sterling.offer.strategy,event.sterling.spokenLine,event.sterling.playerLine,!!event.news,false,event.timing==='conversation'):event.security?replyToVoss(world,event.security.reply,event.security.offer.id,event.security.offer.strategy,event.security.spokenLine,event.security.playerLine,!!event.news,false,event.timing==='conversation'):event.diplomacy ? replyToPetrov(world, event.diplomacy.reply, event.diplomacy.offer.id, event.diplomacy.offer.strategy, event.diplomacy.spokenLine, event.diplomacy.chosenLine,!!event.news,false,event.timing==='conversation',event.diplomacy.requestedQuantity,event.diplomacy.requestedUnitPrice) : decide(world, event.decision,!!event.news,false);
+    world = event.strategic&&event.strategic.command.kind!=='overnight'?applyStrategic(world,event.strategic.command):event.cabinetAssignment?assignCabinetPromise(world,event.cabinetAssignment.index,event.cabinetAssignment.secretaryId):event.congress?(event.congress.kind==='founding'?seatCongress(world,event.congress.seed):actInCongress(world,event.congress.index,event.congress.chamber,event.congress.action,event.congress.text)):event.agenda?(event.agenda.kind==='start'?beginDay(world):endDay(world,!!event.treasuryDeposit)):event.announcement?publishAnnouncement(world,event.announcement.text,!!event.news,false):event.newsResponse?respondToNews(world,event.newsResponse.newsId,event.newsResponse.action,!!event.news,false):event.campaign?(event.campaign.kind==='launch'?startPresidency(world,event.campaign.promises,event.campaign.president):decidePromise(world,event.campaign.index,event.campaign.action,event.campaign.line,!!event.news,false)):event.sterling?replyToMax(world,event.sterling.reply,event.sterling.offer.id,event.sterling.offer.strategy,event.sterling.spokenLine,event.sterling.playerLine,!!event.news,false,event.timing==='conversation'):event.security?replyToVoss(world,event.security.reply,event.security.offer.id,event.security.offer.strategy,event.security.spokenLine,event.security.playerLine,!!event.news,false,event.timing==='conversation'):event.diplomacy ? replyToPetrov(world, event.diplomacy.reply, event.diplomacy.offer.id, event.diplomacy.offer.strategy, event.diplomacy.spokenLine, event.diplomacy.chosenLine,!!event.news,false,event.timing==='conversation',event.diplomacy.requestedQuantity,event.diplomacy.requestedUnitPrice) : decide(world, event.decision,!!event.news,false);
     if (JSON.stringify(world.events.at(-1)) !== JSON.stringify(event)) throw new Error('Event does not match the simulation rules.');
   }
   return world;

@@ -1,6 +1,6 @@
 import type {SocialInteraction} from '../../../shared/schemas/social.ts';
 import type {World} from '../../../shared/schemas/oil-crisis.ts';
-export interface AgentContext {world:World;congressPromise?:number;interactions:SocialInteraction[];cabinetMessages?:import('./cabinet.ts').CabinetMessage[]}
+export interface AgentContext {world:World;cabinetPromise?:number;congressPromise?:number;interactions:SocialInteraction[];cabinetMessages?:import('./cabinet.ts').CabinetMessage[]}
 export interface AgentConfig {key:string;model:string;workspaceId:string}
 export interface WorldAgent {readonly id:string;respond(context:AgentContext,config:AgentConfig):Promise<object>}
 export class CharacterAgent implements WorldAgent {

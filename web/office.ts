@@ -46,9 +46,20 @@ export function createOffice(host: HTMLElement, onSelect: (object: string) => vo
   // Parquet floor and a broad oval rug.
   box(15,.12,13,wood,0,-.1,0);
   for(let x=-7;x<7;x+=.8) for(let z=-5;z<6;z+=2) box(.012,.006,1.98,darkwood,x,.001,z+(Math.round(x*10)%2)*.4);
-  const rug=cylinder(4.2,.022,material('#727c68'),0,.025,.2);rug.scale.z=.7;
-  const rugInner=cylinder(3.93,.024,material('#a9a68a'),0,.03,.2);rugInner.scale.z=.7;
-  const rugCenter=cylinder(3.83,.024,material('#777f6a'),0,.04,.2);rugCenter.scale.z=.7;
+  const rug=cylinder(4.2,.022,material('#727c68'),0,.025,.65);rug.scale.z=.85;
+  const rugInner=cylinder(3.93,.024,material('#a9a68a'),0,.03,.65);rugInner.scale.z=.85;
+  const rugCenter=cylinder(3.83,.024,material('#777f6a'),0,.04,.65);rugCenter.scale.z=.85;
+  // The supplied presidential seal is woven into the visible carpet in front of the desk.
+  // Circular geometry clips the image corners without altering the original artwork.
+  const rugSeal=new THREE.Mesh(new THREE.CircleGeometry(1.25,96),new THREE.MeshStandardMaterial({roughness:1,metalness:0}));
+  rugSeal.name='Freedoma presidential seal on the carpet';
+  rugSeal.rotation.x=-Math.PI/2;rugSeal.position.set(0,.056,2.4);
+  rugSeal.receiveShadow=true;rugSeal.visible=false;scene.add(rugSeal);
+  new THREE.TextureLoader().load('/images/freedoma-presidential-seal.jpeg',texture=>{
+    texture.colorSpace=THREE.SRGBColorSpace;
+    texture.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
+    rugSeal.material.map=texture;rugSeal.material.needsUpdate=true;rugSeal.visible=true;render();
+  });
   // Back wall is built around actual window openings, so daylight reaches the desk.
   box(15,1.05,.25,green,0,.52,-4.5);box(15,.65,.25,trim,0,4.6,-4.5);
   for(const x of [-7,-4.6,-1.55,1.55,4.6,7]) box(x===-7||x===7?1:.35,3.4,.3,green,x,2.7,-4.5);

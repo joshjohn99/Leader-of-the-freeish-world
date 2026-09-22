@@ -8,7 +8,8 @@ export function socialFeed(world:World): SocialPost[] {
     add(1,1,'Team Freedoma','freedomaforever','Supporter','Finally a president who understands the people. Specifically the people who heard “free gas.”','supportive');
     add(1,2,'The Daily Shrug','dailyshrug','News desk','The Department of Energy has requested that campaign promises be measured in available fuel.','neutral');
   }
-  for(const event of world.events.slice(-8)){
+  for(const event of world.events.filter(e=>!e.cabinetAssignment&&(!e.strategic||e.strategic.reports.length)).slice(-8)){
+    if(event.strategic){event.strategic.reports.forEach((r,index)=>{add(event.after.day,event.id*1000+index*3,r.source,r.source.toLowerCase(),'News desk',`${r.certainty==='unverified'?'UNVERIFIED: ':''}${r.headline}. ${r.facts}`,'neutral');add(event.after.day,event.id*1000+index*3+1,'Civic Side-Eye','civicsideeye','Satire account',r.certainty==='unverified'?'An allegation is not a confirmed event. Even my group chat has a fact-checker. It is usually the person nobody likes.':`“${r.headline}.” I would like my next government update to contain fewer conditions and more functioning services.`,'critical');});continue;}
     if(event.news)add(event.after.day,event.id*100,'PNN','pnn','News desk',event.news.headline+'. '+event.news.facts,'neutral');
     if(event.localNews)add(event.after.day,event.id*100+1,'BULL','bull',event.localNews.community,event.localNews.headline+'. '+event.localNews.facts,'neutral');
     if(event.campaign){add(event.after.day,event.id*10,'PNN','pnn','News desk',event.campaign.kind==='launch'?`The president promised: ${event.campaign.promises.join('; ')}. PNN is awaiting evidence, and possibly a dictionary.`:`A campaign promise receives a ${event.campaign.action.replace('_',' ')} response. An announcement is not a delivery receipt.`,'neutral');continue;}

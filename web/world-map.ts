@@ -1,3 +1,4 @@
+import {strategicState,stageLabel} from '../server/src/diplomacy/strategic.ts';
 import type { World, WorldEvent } from '../shared/schemas/oil-crisis.ts';
 
 export const mapCountries = [
@@ -12,6 +13,7 @@ export const mapCountries = [
 export type MapCountryId = typeof mapCountries[number]['id'];
 
 export function worldMapProjection(world: World) {
+  const strategy=strategicState(world),war=!!strategy&&['border_pressure','incursion','regional_war'].includes(strategy.stage);
   const borderEvent = world.events.findLast(event => event.news?.kind === 'border_dispute');
   const response = borderEvent && world.events.findLast(event => event.newsResponse?.newsId === borderEvent.news!.id);
   // The security crisis is part of the existing scenario. None of the current
@@ -24,12 +26,15 @@ export function worldMapProjection(world: World) {
     countries: mapCountries.map(country => {
       const securityConflict = country.id === 'karmenia' || country.id === 'lydian';
       const borderConflict = !!borderEvent && (country.id === 'bellara' || country.id === 'northhaven');
-      return { ...country, conflict: securityConflict || borderConflict,
-        reason: securityConflict ? securityReason : borderConflict
+      const rivalConflict=war&&(country.id==='petrovia'||country.id==='bellara');
+      const homeland=country.id==='freedoma'&&strategy&&strategy.homeland!=='safe';
+      return { ...country, conflict: securityConflict || borderConflict || rivalConflict || !!homeland,
+        reason: homeland?`Recorded status: ${strategy!.homeland}.`:rivalConflict?`${stageLabel[strategy!.stage]}. Open Petrovia diplomacy to respond.`:securityConflict ? securityReason : borderConflict
           ? `Disputed border crossing closed.${response ? ' Freedoma has responded; no settlement is recorded.' : ' PNN reports stalled talks.'}`
           : 'No active territorial conflict recorded.' };
     }),
     ties: [
+      {a:'petrovia',b:'bellara',label:strategy?stageLabel[strategy.stage]:'Diplomatic border',conflict:war},
       { a: 'bellara', b: 'northhaven', label: borderEvent ? 'Disputed crossing' : 'Shared border', conflict: !!borderEvent },
       { a: 'bellara', b: 'eastmere', label: 'Shared border', conflict: false },
       { a: 'karmenia', b: 'lydian', label: 'Territorial conflict', conflict: true },
@@ -38,6 +43,7 @@ export function worldMapProjection(world: World) {
 }
 
 export function countryForMapEvent(event?: WorldEvent): MapCountryId {
+  if(event?.strategic?.reports.length)return event.strategic.reports[0].source==='BULL'?'freedoma':event.strategic.snapshot.homeland!=='safe'?'freedoma':'bellara';
   if (event?.security) return 'karmenia';
   if (event?.diplomacy) return 'petrovia';
   if (event?.news) return event.news.kind === 'shipping' ? 'eastmere' : event.news.kind === 'currency_talks' ? 'petrovia' : 'bellara';

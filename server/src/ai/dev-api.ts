@@ -1,3 +1,5 @@
+import {generateStrategic} from './strategic.ts';
+import {validatePromiseIndex} from '../cabinet/promises.ts';
 import {generateCongress} from './congress.ts';
 import {cabinetMembers,validateCabinetMessages} from '../agents/cabinet.ts';
 import {generateCabinet} from './cabinet.ts';
@@ -17,12 +19,13 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 // Loopback-only development middleware. This is not a deployed public API.
 export function createAgentMiddleware(root:string) {
   const agents=new AgentRegistry()
+   .register(new CharacterAgent('/api/strategic',async({world},c)=>({voice:await generateStrategic(world,c.key,c.model,c.workspaceId)})))
    .register(new CharacterAgent('/api/agent',async({world},c)=>({voice:await generateVoice(world,c.key,c.model,fetch,c.workspaceId)})))
    .register(new CharacterAgent('/api/voss',async({world},c)=>({voice:await generateVoss(world,c.key,c.model,fetch,c.workspaceId)})))
    .register(new CharacterAgent('/api/max',async({world},c)=>({voice:await generateMax(world,c.key,c.model,c.workspaceId)})))
-   .register(new CharacterAgent('/api/social',async({world,interactions,cabinetMessages,congressPromise},c)=>({posts:await generateSocial(world,interactions,c.key,c.model,c.workspaceId)})))
+   .register(new CharacterAgent('/api/social',async({world,interactions},c)=>({posts:await generateSocial(world,interactions,c.key,c.model,c.workspaceId)})))
    .register(new CharacterAgent('/api/staff',async({world},c)=>({brief:await generateStaff(world,c.key,c.model,c.workspaceId)})));
-  for(const member of cabinetMembers)agents.register(new CharacterAgent(`/api/cabinet/${member.id}`,async({world,cabinetMessages},c)=>({voice:await generateCabinet(world,member.id,cabinetMessages??[],c.key,c.model,c.workspaceId)})));
+  for(const member of cabinetMembers)agents.register(new CharacterAgent(`/api/cabinet/${member.id}`,async({world,cabinetMessages,cabinetPromise},c)=>({voice:await generateCabinet(world,member.id,cabinetMessages??[],c.key,c.model,c.workspaceId,fetch,cabinetPromise)})));
   for(const chamber of ['house','senate'] as const)agents.register(new CharacterAgent(`/api/congress/${chamber}`,async({world,congressPromise},c)=>({voice:await generateCongress(world,congressPromise!,chamber,c.key,c.model,c.workspaceId)})));
   const configPath=resolve(root,'.env.local');
   const cache=new Map<string,Promise<unknown>>();let lastWindow=Date.now(),requestCount=0;
@@ -40,7 +43,7 @@ export function createAgentMiddleware(root:string) {
     if(req.method!=='POST'||!(req.url==='/api/ai/configure'||agents.has(req.url)))return json(404,{error:'Not found'});
     if(origin!==`http://${host}` || !req.headers['content-type']?.startsWith('application/json'))return json(403,{error:'Open this action from the local game.'});
     try{
-      let raw='';for await(const part of req){raw+=part.toString();if(Buffer.byteLength(raw)>500_000)return json(413,{error:'Playtest history is too large.'});}
+      let raw='';for await(const part of req){raw+=part.toString();if(Buffer.byteLength(raw)>2_000_000)return json(413,{error:'Playtest history is too large.'});}
       const body=JSON.parse(raw);
       if(req.url==='/api/ai/configure'){
         const current=await config();
@@ -54,13 +57,13 @@ export function createAgentMiddleware(root:string) {
       const congressPromise=req.url.startsWith('/api/congress/')?body.promise:undefined;
       if(req.url.startsWith('/api/congress/')&&(!Number.isInteger(congressPromise)||congressPromise<0||congressPromise>2))return json(400,{error:'Choose a campaign promise.'});
       const cabinetMessages=req.url.startsWith('/api/cabinet/')?validateCabinetMessages(body.messages??[]):[];
-      const world=replay(body.events);const social=req.url==='/api/social';const interactions=social?validateInteractions(body.interactions??[],world.state.day):[];const c=await config();
+      const world=replay(body.events);const cabinetPromise=req.url.startsWith('/api/cabinet/')&&body.promise!==undefined?validatePromiseIndex(world,body.promise):undefined;const social=req.url==='/api/social';const interactions=social?validateInteractions(body.interactions??[],world.state.day):[];const c=await config();
       if(!c.key)return json(200,{mode:'offline',reason:'Connect Claude to enable generated dialogue and model-selected strategies.'});
-      const digest=createHash('sha256').update(req.url+JSON.stringify(body.events)+JSON.stringify(interactions)+JSON.stringify(cabinetMessages)+String(congressPromise)+c.model+c.workspaceId).digest('hex');
+      const digest=createHash('sha256').update(req.url+JSON.stringify(body.events)+JSON.stringify(interactions)+JSON.stringify(cabinetMessages)+String(congressPromise)+String(cabinetPromise)+c.model+c.workspaceId).digest('hex');
       if(!cache.has(digest)){
         if(Date.now()-lastWindow>60000){lastWindow=Date.now();requestCount=0;}
         if(requestCount++>=12)return json(429,{mode:'offline',reason:'Local request limit reached. Using the offline opponent for now.'});
-        const pending=agents.respond(req.url,{world,interactions,cabinetMessages,congressPromise},c).then(result=>({mode:'claude',...result})).catch((error)=>{cache.delete(digest);return {mode:'offline',reason:error instanceof ClaudeRequestError ? error.reason : 'Claude could not complete this turn. Using the offline opponent; check the API key, billing, or connection.'};});
+        const pending=agents.respond(req.url,{world,interactions,cabinetMessages,congressPromise,cabinetPromise},c).then(result=>({mode:'claude',...result})).catch((error)=>{cache.delete(digest);return {mode:'offline',reason:error instanceof ClaudeRequestError ? error.reason : 'Claude could not complete this turn. Using the offline opponent; check the API key, billing, or connection.'};});
         cache.set(digest,pending);if(cache.size>100)cache.delete(cache.keys().next().value!);
       }
       return json(200,await cache.get(digest));

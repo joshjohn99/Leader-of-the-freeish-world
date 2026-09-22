@@ -1,0 +1,23 @@
+.cabinet-section-tabs { display:flex; gap:8px; margin:18px 0; }
+.cabinet-section-tabs button { padding:10px 14px; border:1px solid #bbb29e; border-radius:5px; background:#fffcf3; color:#243c30; cursor:pointer; }
+.cabinet-section-tabs button[aria-pressed=true] { background:#243c30; color:#fff8e6; }
+.cabinet-promises>h3 { font:26px Georgia,serif; margin:18px 0 8px; }
+.cabinet-promises>p { font-size:13px; line-height:1.5; }
+.cabinet-promise-card { border:1px solid #c6bda6; border-radius:8px; background:#fffcf3; padding:18px; margin:14px 0; }
+.cabinet-promise-card h4 { font:21px/1.35 Georgia,serif; margin:10px 0 16px; overflow-wrap:anywhere; }
+.cabinet-promise-card>small { font-size:10px; letter-spacing:1px; }
+.cabinet-promise-card label,.cabinet-chat>label { display:block; font-size:12px; margin:10px 0 6px; }
+.cabinet-promise-card select,.cabinet-chat>select { width:100%; min-width:0; padding:10px; background:#fffdf8; color:#243c30; border:1px solid #aaa18b; border-radius:5px; font-size:13px; }
+.cabinet-progress { padding:14px 0; border-top:1px solid #d6cebc; margin-top:14px; }
+.cabinet-progress p { font-size:13px; line-height:1.5; margin:10px 0; }
+.cabinet-progress-status { font:600 11px Arial,sans-serif; padding:5px 8px; border-radius:4px; background:#e6edde; color:#2c5037; display:inline-block; }
+.cabinet-progress>small { display:block; font-size:11px; line-height:1.5; color:#625f53; }
+.cabinet-vote-progress { display:grid; gap:6px; font-size:12px; }
+.cabinet-progress .cabinet-blocker { color:#853728; }
+.promise-owner { padding:10px 0; border-bottom:1px solid #d6cebc; font-size:12px; }
+.promise-owner .text-button { display:block; margin:7px 0; padding:4px 0; }
+.cabinet-drawer button:focus-visible,.cabinet-drawer select:focus-visible,.cabinet-drawer textarea:focus-visible { outline:3px solid #ae8040; outline-offset:3px; }
+.cabinet-drawer .text-button { white-space:normal; text-align:left; line-height:1.4; }
+.cabinet-drawer h4,.cabinet-drawer p { overflow-wrap:anywhere; }
+.cabinet-chat details>summary { cursor:pointer; margin:14px 0; font-size:12px; }
+@media(max-width:650px) { .cabinet-promise-card { padding:13px; } .cabinet-section-tabs { position:sticky; top:0; background:#f5f0e4; padding:8px 0; z-index:1; } }

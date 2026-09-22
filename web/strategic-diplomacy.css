@@ -1,0 +1,17 @@
+.strategic-situation,.strategic-treaty,.strategic-terms,.strategic-confirm { padding:16px; border:1px solid #c5baa0; border-radius:8px; margin:16px 0; background:#faf7ed; }
+.strategic-situation { background:#213d34; color:#f8eed5; }
+.strategic-situation>b,.strategic-situation>span,.strategic-situation>small { display:block; margin:6px 0; }
+.strategic-situation>span { font-size:13px; }.strategic-situation>small { color:#d1c69f; font-size:11px; }
+.strategic-situation p,.strategic-treaty p,.strategic-confirm p { font-size:13px; line-height:1.6; }
+.strategic-treaty small { font-size:11px; }.strategic-warning { color:#95382c; }.strategic-situation .strategic-warning { color:#ffd0ad; }
+.strategic-advisers { display:flex; gap:14px; flex-wrap:wrap; }
+.strategic-terms h3,.strategic-confirm h3 { font:22px Georgia,serif; margin:0 0 12px; }
+.strategic-terms ul { margin:14px 0; padding:0; list-style:none; }.strategic-terms li { display:flex; gap:12px; padding:10px 0; border-top:1px solid #d8cebb; font-size:12px; line-height:1.5; }
+.strategic-terms li>span { flex-shrink:0; width:22px; height:22px; border:1px solid currentColor; border-radius:50%; text-align:center; color:#477359; }
+.strategic-terms li.disputed>span { color:#9b432f; }.strategic-terms li small { display:block; color:#635f54; font-size:11px; }
+.strategic-confirm { border:2px solid #a37a3a; background:#fff2d8; }.strategic-confirm:focus { outline:2px solid #203d31; outline-offset:3px; }
+.strategic-confirm-actions { display:flex; flex-direction:column; gap:8px; }
+.strategic-orders { border-top:1px solid #c5baa0; padding:16px 0; }.strategic-orders summary { cursor:pointer; font-size:13px; font-weight:bold; }
+.strategic-orders article { margin:12px 0; padding:12px; background:#e9e6d9; border-radius:6px; }.strategic-orders p { font-size:12px; line-height:1.5; }.strategic-orders small { display:block; color:#715a40; font-size:11px; }
+.strategic-news:empty { display:none; }.strategic-news h3 { font-family:Georgia,serif; }.strategic-news .case-tag { line-height:1.5; }
+@media(max-width:500px) { .strategic-terms,.strategic-treaty,.strategic-confirm { padding:12px; }.strategic-confirm-actions button { width:100%; } }

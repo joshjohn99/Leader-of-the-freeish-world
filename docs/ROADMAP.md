@@ -1,5 +1,15 @@
 # Roadmap
 
+## Recurring treasury income
+
+Added F$45 tax receipts every third calendar day, credited before overnight obligations, in addition to existing daily revenue. The command center, office and ledger show the next deposit, and receipts trigger a notification. Legacy saves retain their historical balances. See [TREASURY_REVENUE.md](TREASURY_REVENUE.md) for prototype balance and replay details.
+
+## Current slice — Petrov as a strategic rival
+
+Implemented persistent proposals and explicit treaty signatures, three-day supply contracts, the Bellara territorial crisis, monitored compliance and breaches, daily presidential security orders, and connected news/map/cabinet reactions. The election remains the end of play. Existing histories adopt the system through an explicit initialization event. Review the three increments, prototype settings and verification guide in [STRATEGIC_DIPLOMACY.md](STRATEGIC_DIPLOMACY.md). Next: playtest bargaining variety and the pace of the crisis before extending the cast or adding tactical warfare.
+
+The entries below document earlier milestones.
+
 ## Current priority — oil crisis playtest
 
 The subsequent design conversation narrowed the first build to decisions and consequences in a small sandbox. This supersedes the broader milestone 1 plan below for now.
@@ -87,3 +97,7 @@ Removed the required free-text proposal from the Congress UI. Players select a c
 ### Promises lead to legislation
 
 On the Record now prioritizes Introduce bill for each untouched promise, followed by a direct route to that promise's congressional negotiation and vote. Introduction is a saved congressional action, uses the existing one-action-per-day allowance, and does not advance time or spend treasury. Legislative actions satisfy the public-agenda requirement as well as any congressional task. Studies and rhetorical choices remain in a secondary collapsible section. Earlier saves and congressional records still replay.
+
+### Cabinet promise owners
+
+Players can manually assign a secretary to each promise, consult them about that exact commitment, and review current congressional progress, costs and blockers. Cabinet recommendations link to the correct promise and chamber without executing an action. Assignments survive replay, remain free, and do not complete daily tasks or produce public reactions. See CABINET_PROMISES.md. Next: playtest whether the advice makes the next presidential decision clearer.

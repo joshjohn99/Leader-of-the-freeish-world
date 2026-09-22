@@ -26,5 +26,5 @@ export function createCongressPanel(getWorld:()=>World,commit:(world:World)=>voi
  catch(error){if(token!==epoch)return;voice=undefined;status=error instanceof Error?error.message:'Offline caucus positions';}
  if(token!==epoch)return;busy=false;if(isActive()&&JSON.stringify([getWorld().events,index,chamber])===key)render(host);
  }
- return {render,selectPromise(value:number){index=value;chamber='house';epoch++;busy=false;voice=undefined;context='';selectedApproach='';},reset(){epoch++;busy=false;voice=undefined;context='';index=0;chamber='house';selectedApproach='';}};
+ return {render,selectPromise(value:number,targetChamber:Chamber='house'){index=value;chamber=targetChamber;epoch++;busy=false;voice=undefined;context='';selectedApproach='';},reset(){epoch++;busy=false;voice=undefined;context='';index=0;chamber='house';selectedApproach='';}};
 }

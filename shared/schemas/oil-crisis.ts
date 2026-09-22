@@ -13,6 +13,9 @@ export interface CrisisState {
   subsidyDays: number;
 }
 export interface WorldEvent {
+  readonly treasuryDeposit?: import('../../server/src/economy/revenue.ts').TreasuryDeposit;
+  readonly strategic?: import('../../server/src/diplomacy/strategic-types.ts').StrategicRecord;
+  readonly cabinetAssignment?: import('../../server/src/cabinet/promises.ts').CabinetAssignment;
   readonly congress?: import('../../server/src/congress/congress.ts').CongressRecord;
   readonly announcement?: {readonly text:string};
   readonly timing?: 'conversation'|'day-action';
